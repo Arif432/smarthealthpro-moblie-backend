@@ -5,18 +5,36 @@ const CartModel = require('../models/CartModel')
 const { sendMail } = require('../utils/nodemailerConfig')
 
 const registerUser = async (req, res) => {
-    const { name, email, password, avatar } = req.body; // Extracting avatar from the request body
+    const { name, email, password, role, dateOfBirth, bloodType, cnic, address, avatar } = req.body;
     try {
+        // Check password length
         if (password.length < 6) {
             return res.status(400).json({ error: 'Password should be at least 6 characters' });
         }
+
+        // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
-        await sendMail(email, `Welcome ${name} to the Bookstore`, 'Welcome to the Bookstore', `<h3>Welcome to the Bookstore ${name}</h3>`)
-        const user = await UserModal.create({ name, email, password: hashedPassword, avatar }); // Including avatar in user creation
+
+        // Create the user based on role
+        let user;
+        if (role === 'patient') {
+            // Create patient with additional fields
+            user = await UserModal.create({ name, email, password: hashedPassword, role, dateOfBirth, bloodType, avatar });
+        } else if (role === 'doctor') {
+            // Create doctor with additional fields
+            user = await UserModal.create({ name, email, password: hashedPassword, role, cnic, address, avatar });
+        } else {
+            return res.status(400).json({ error: 'Invalid role' });
+        }
+
+        // Send welcome email
+        // await sendMail(email, `Welcome ${name} to the Bookstore`, 'Welcome to the Bookstore', `<h3>Welcome to the Bookstore ${name}</h3>`);
+
         res.status(201).json({ user: user._id });
     } catch (error) {
+        // Handle errors
         if (error.code === 11000) {
-            return res.status(400).json({ error: 'Email or username already exists' });
+            return res.status(400).json({ error: 'Email already exists' });
         }
         res.status(500).json({ error: error.message });
     }
@@ -29,7 +47,9 @@ const loginUser = async (req, res) => {
         if (user) {
             const isPasswordCorrect = await bcrypt.compare(password, user.password);
             if (isPasswordCorrect) {
-                const token = jwt.sign({ _id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: 3600 });
+                const token = jwt.sign({ _id: user._id, role: user.role },
+                     'sF4oD3s8qjv%&@Fg2S!L5iYp9s@&A5vG', 
+                     { expiresIn: 3600 });
                 res.cookie('token', token);
                 res.json({ role: user.role, token });
             } else {
