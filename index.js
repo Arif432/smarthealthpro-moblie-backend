@@ -16,11 +16,11 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
     credentials: true,
-    origin: 'http://localhost:5173',  // Adjust this to your frontend's URL
+    origin: "http://localhost:5000"
 }));
 
 const mongodbURI = "mongodb+srv://MuhammadArifNawaz:03006340067@task-manager-2nd.mesyzb7.mongodb.net/doctorsHealthSystem";
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 mongoose.connect(mongodbURI, { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => {
