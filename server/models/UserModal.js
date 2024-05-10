@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 
+// Common User Schema
 const UserSchema = new mongoose.Schema({
-    name: {
+    userName: {
         type: String, 
         required: true,
     },
@@ -18,33 +19,6 @@ const UserSchema = new mongoose.Schema({
     role: {
         type: String,
         enum: ['patient', 'doctor'], // Role must be either 'patient' or 'doctor'
-        // default: 'patient',
-    },
-    // Additional fields for patients
-    dateOfBirth: {
-        type: Date,
-        required: function() {
-            return this.role === 'patient'; // Date of Birth required only for patients
-        }
-    },
-    bloodType: {
-        type: String,
-        required: function() {
-            return this.role === 'patient'; // Blood type required only for patients
-        }
-    },
-    // Additional fields for doctors
-    cnic: {
-        type: String,
-        required: function() {
-            return this.role === 'doctor'; // CNIC required only for doctors
-        }
-    },
-    address: {
-        type: String,
-        required: function() {
-            return this.role === 'doctor'; // Address required only for doctors
-        }
     },
     avatar: {
         type: String,
@@ -52,5 +26,52 @@ const UserSchema = new mongoose.Schema({
     },
 });
 
-const UserModel = mongoose.model('users', UserSchema);
-module.exports = UserModel;
+// Doctor Schema
+const DoctorSchema = new mongoose.Schema({
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+    },
+    specialization: {
+        type: String,
+        required: true,
+    },
+    cnic: {
+        type: String,
+        required: true,
+    },
+    address: {
+        type: String,
+        required: true,
+    },
+    // Add other doctor-specific fields here
+});
+
+// Patient Schema
+const PatientSchema = new mongoose.Schema({
+    user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+    },
+    dateOfBirth: {
+        type: Date,
+        required: true,
+    },
+    bloodType: {
+        type: String,
+        required: true,
+    },
+    // Add other patient-specific fields here
+});
+
+const UserModel = mongoose.model('User', UserSchema);
+const DoctorModel = mongoose.model('Doctor', DoctorSchema);
+const PatientModel = mongoose.model('Patient', PatientSchema);
+
+module.exports = {
+    User: UserModel,
+    Doctor: DoctorModel,
+    Patient: PatientModel,
+};
