@@ -8,6 +8,8 @@ const cartRoutes = require("./routes/CartRoute");
 const orderRoutes = require("./routes/OrderRoute");
 const genreRoutes = require('./routes/GenresRoutes')
 const authorRoutes = require('./routes/AuthorsRoute')
+const appointmentRoutes = require('./routes/AppointmentRoute');
+
 
 require('dotenv').config();
 const app = express();
@@ -35,6 +37,7 @@ app.use('/cart', cartRoutes);
 app.use('/order', orderRoutes);
 app.use('/genres',genreRoutes)
 app.use('/authors',authorRoutes)
+app.use('/appointment', appointmentRoutes);
 
 app.listen(PORT, () => {
     console.log('Server started at port:', PORT);
