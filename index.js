@@ -2,14 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const userRoutes = require('./routes/userRoutes'); // Assuming correct path
-const productRoutes = require("./routes/productsRoutes"); 
-const cartRoutes = require("./routes/CartRoute");
-const orderRoutes = require("./routes/OrderRoute");
-const genreRoutes = require('./routes/GenresRoutes')
-const authorRoutes = require('./routes/AuthorsRoute')
+const userRoutes = require('./routes/userRoutes');
 const appointmentRoutes = require('./routes/AppointmentRoute');
-
 
 require('dotenv').config();
 const app = express();
