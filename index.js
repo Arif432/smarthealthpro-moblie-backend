@@ -2,8 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const userRoutes = require('./routes/userRoutes');
-const appointmentRoutes = require('./routes/AppointmentRoute');
+const userRoutes = require('./server/routes/userRoutes');
+const appointmentRoutes = require('./server/routes/AppointmentRoute');
 
 require('dotenv').config();
 const app = express();
@@ -26,11 +26,11 @@ mongoose.connect(mongodbURI, { useNewUrlParser: true, useUnifiedTopology: true }
         console.error('Error connecting to MongoDB:', error);
     });
 app.use('/user', userRoutes);
-app.use('/product', productRoutes);
-app.use('/cart', cartRoutes);
-app.use('/order', orderRoutes);
-app.use('/genres',genreRoutes)
-app.use('/authors',authorRoutes)
+// app.use('/product', productRoutes);
+// app.use('/cart', cartRoutes);
+// app.use('/order', orderRoutes);
+// app.use('/genres',genreRoutes)
+// app.use('/authors',authorRoutes)
 app.use('/appointment', appointmentRoutes);
 
 app.listen(PORT, () => {

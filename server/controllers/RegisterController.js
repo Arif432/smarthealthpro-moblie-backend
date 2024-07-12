@@ -1,8 +1,8 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { User, Doctor, Patient } = require('../models/UserModal'); // Importing updated models
-const CartModel = require('../models/CartModel');
-const { sendMail } = require('../utils/nodemailerConfig');
+// const CartModel = require('../models/');
+// const { sendMail } = require('../utils/nodemailerConfig');
 
 const registerUser = async (req, res) => {
     const { userName, email, password, role } = req.body;
