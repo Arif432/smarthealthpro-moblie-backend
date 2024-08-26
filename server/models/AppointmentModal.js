@@ -1,52 +1,59 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const appointmentSchema = new mongoose.Schema({
-    title: {
-        type: String,
-        required: true
+  doctor: {
+    id: {
+      type: String,
+      ref: "Doctor",
+      required: true,
     },
-    doctor: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Doctor',
-        required: true
+    name: {
+      type: String,
+      required: true,
     },
-    patient: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Patient',
-        required: true
+    avatar: {
+      type: String,
+      default:
+        "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
     },
-    date: {
-        type: Date,
-        required: true
+    specialization: {
+      type: String,
+      required: true,
     },
-    availableTimeSlots: [{
-        type: String,
-        required: true
-    }],
-    selectedTimeSlot: {
-        type: String, // This will store the selected time slot
-        required: true
+  },
+  patient: {
+    type: String,
+    ref: "Patient",
+    required: true,
+  },
+  date: {
+    type: Date,
+    required: true,
+  },
+  availableTimeSlots: [
+    {
+      type: String,
+      required: true,
     },
-    feeStatus: {
-        type: String,
-        enum: ['pending', 'paid'],
-        default: 'pending'
-    },
-    appointmentStatus: {
-        type: String,
-        enum: ['pending', 'visited', 'cancelled'],
-        default: 'pending'
-    },
-    fee: {
-        type: Number,
-        required: true
-    },
-    description: {
-        type: String,
-        required: true
-    }
+  ],
+  selectedTimeSlot: {
+    type: String, // This will store the selected time slot
+    required: true,
+  },
+  appointmentStatus: {
+    type: String,
+    enum: ["pending", "visited", "cancelled"],
+    default: "pending",
+  },
+  description: {
+    type: String,
+    required: true,
+  },
+  location: {
+    type: String,
+  },
 });
 
-const Appointment = mongoose.model('Appointment', appointmentSchema);
+const Appointment = mongoose.model("Appointment", appointmentSchema);
 
 module.exports = Appointment;

@@ -1,210 +1,453 @@
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { User, Doctor, Patient } = require('../models/UserModal'); // Importing updated models
-// const CartModel = require('../models/');
+const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const { User, Doctor, Patient } = require("../models/UserModal");
 // const { sendMail } = require('../utils/nodemailerConfig');
+const { ObjectId } = mongoose.Types;
 
 const registerUser = async (req, res) => {
-    const { userName, email, password, role } = req.body;
-    try {
-        // Check password length
-        if (password.length < 6) {
-            return res.status(400).json({ error: 'Password should be at least 6 characters' });
-        }
-        // Hash the password
-        const hashedPassword = await bcrypt.hash(password, 10);
+  const { fullName, email, password, role } = req.body;
 
-        // Create the user
-        const user = await User.create({ userName, email, password: hashedPassword, role });
+  try {
+    // Generate a base username from the name
+    let userName = fullName.replace(/\s+/g, "").toLowerCase();
+    let uniqueUserName = userName;
+    let counter = 1;
 
-        // If the role is patient, create a patient linked to the user
-        if (role === 'patient') {
-            const { dateOfBirth, bloodType } = req.body;
-            const patient = await Patient.create({ user: user._id, dateOfBirth, bloodType });
-            return res.status(201).json({ user: user._id, patient: patient._id });
-        }
-
-        // If the role is doctor, create a doctor linked to the user
-        if (role === 'doctor') {
-            console.log('Doctor:', req.body);
-            const { cnic, address , specialization } = req.body;
-            const doctor = await Doctor.create({ user: user._id, cnic, address , specialization : specialization});
-            return res.status(201).json({ user: user._id, doctor: doctor._id });
-        }
-
-        res.status(201).json({ user: user._id });
-    } catch (error) {
-        // Handle errors
-        console.error('Error:', error); 
-        if (error.code === 11000) {
-            return res.status(400).json({ error: 'Email already exists' });
-        }
-        res.status(500).json({ error: error.message });
+    // Check if username already exists and generate a unique username
+    while (await User.findOne({ userName: uniqueUserName })) {
+      uniqueUserName = `${userName}${counter}`;
+      counter++;
     }
+
+    // Check if email already exists
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail) {
+      return res.status(400).json({ error: "Email already exists" });
+    }
+
+    // Check password length
+    if (password.length < 8) {
+      return res
+        .status(400)
+        .json({ error: "Password should be at least 8 characters" });
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create the user
+    const user = await User.create({
+      userName: uniqueUserName,
+      fullName,
+      email,
+      password: hashedPassword,
+      role,
+    });
+
+    res.status(201).json({ user: user._id });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ error: "Email already exists" });
+    }
+    res.status(500).json({ error: error.message });
+  }
 };
 
 const loginUser = async (req, res) => {
-    const { email, password } = req.body;
-    try {
-        const user = await User.findOne({ email });
-        if (user) {
-            const isPasswordCorrect = await bcrypt.compare(password, user.password);
-            if (isPasswordCorrect) {
-                const token = jwt.sign({ _id: user._id, role: user.role },
-                    'sF4oD3s8qjv%&@Fg2S!L5iYp9s@&A5vG',
-                    { expiresIn: 3600 });
-                res.cookie('token', token);
-                res.json({ id: user._id, role: user.role, token, userName: user.userName, email: user.email, avatar: user.avatar });
-            } else {
-                res.status(401).json({ error: 'Invalid password.' });
-            }
-        } else {
-            res.status(404).json({ error: 'User not found.' });
-        }
-    } catch (error) {
-        res.status(500).json({ error: 'Error finding user.' });
+  const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (user) {
+      const isPasswordCorrect = await bcrypt.compare(password, user.password);
+      if (isPasswordCorrect) {
+        const token = jwt.sign(
+          { _id: user._id, role: user.role },
+          "sF4oD3s8qjv%&@Fg2S!L5iYp9s@&A5vG",
+          { expiresIn: 3600 }
+        );
+        res.cookie("token", token);
+        res.json({
+          id: user._id,
+          role: user.role,
+          token,
+          userName: user.userName,
+          email: user.email,
+          avatar: user.avatar,
+        });
+      } else {
+        res.status(401).json({ error: "Invalid password." });
+      }
+    } else {
+      res.status(404).json({ error: "User not found." });
     }
+  } catch (error) {
+    res.status(500).json({ error: "Error finding user." });
+  }
 };
 
 const verifyUser = (req, res, next) => {
-    const token = req.headers['token'];
-    console.log('Token:', token);
-    if (!token) {
-        return res.status(401).json({ msg: 'Authorization token missing' });
-    }
-    try {
-        jwt.verify(token, 'sF4oD3s8qjv%&@Fg2S!L5iYp9s@&A5vG', (err, decoded) => {
-            if (err) {
-                return res.status(401).json({ msg: 'Invalid token' });
-            } else {
-                req.user = {
-                    _id: decoded._id,
-                    role: decoded.role
-                };
-                next();
-            }
-        });
-    } catch (error) {
-        res.status(500).json({ error: 'Error verifying user.' });
-    }
-};
-
-const updateUser = async (req, res) => {
-    const { id } = req.params;
-    const { userName, email, password, avatar , role } = req.body;
-    try {
-        if (req.user._id.toString() !== id) {
-            return res.status(403).json({ error: 'You are not authorized to update this user' });
-        }
-        if(role === 'patient'){
-            const { dateOfBirth, bloodType } = req.body;
-            await Patient.findOneAndUpdate({ user: id }, { dateOfBirth, bloodType }, { new: true });
-        }
-        if(role === 'doctor'){
-            const { cnic, address , specialization } = req.body;
-            await Doctor.findOneAndUpdate({ user: id }, { cnic, address , specialization }, { new: true });
-        }
-        const updatedUser = await User.findByIdAndUpdate(id, { userName, email, password, avatar }, { new: true });
-        res.status(200).json({ msg: 'User updated successfully', user: updatedUser });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-const deleteUser = async (req, res) => {
-    const { id } = req.params;
-    console.log('ID:', id);
-    try {
-        const user = await User.findById(id);
-        console.log('User:', user);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found during deletion' });
-        }
-        if (req.user._id.toString() !== id) {
-            return res.status(403).json({ error: 'You are not authorized to delete this user' });
-        }
-        // await CartModel.findOneAndDelete({ user: id });
-        if (user.role === 'patient') {
-             await Patient.findOneAndDelete({ user: id });
-        }
-        if (user.role === 'doctor') {
-            await Doctor.findOneAndDelete({ user: id });
-        }
-        const deletedUser = await User.findByIdAndDelete(id);
-        if (!deletedUser) {
-            return res.status(404).json({ error: 'User not found during deletion' });
-        }
-        res.status(200).json({ msg: 'User and associated cart deleted successfully', user: deletedUser });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-        console.log('Error:', error);
-    }
+  const token = req.headers["authorization"]?.split(" ")[1]; // Expect token to be in format "Bearer <token>"
+  if (!token) {
+    return res.status(401).json({ msg: "Authorization token missing" });
+  }
+  try {
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ msg: "Invalid token" });
+      } else {
+        req.user = {
+          _id: decoded._id,
+          role: decoded.role,
+        };
+        next();
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Error verifying user." });
+  }
 };
 
 const forgotPassword = async (req, res) => {
-    const { email } = req.body;
-    try {
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        console.log('User:', user._id);
-        const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        console.log('Token:', token);
-        const link = `http://localhost:5000/user/reset-password/${user._id}/${token}`;
-        //   sendMail(
-        //     email,
-        //     'Reset Password',
-        //     'Reset Password',
-        //     `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
-        //   );
-        res.status(200).json({ msg: 'Password reset link sent to email', link: link });
-    } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
+    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+    const link = `http://localhost:5000/user/reset-password/${user._id}/${token}`;
+    // sendMail(
+    //   email,
+    //   'Reset Password',
+    //   'Reset Password',
+    //   `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
+    // );
+    res.status(200).json({ msg: "Password reset link sent to email", link });
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
 };
 
 const resetPassword = async (req, res) => {
-    console.log('Params:', req.params);
-    const { userId, token } = req.params;
-    const { password } = req.body;
-    console.log('Request body:', req.body);
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        if (decoded._id !== userId) {
-            return res.status(400).json({ error: 'Invalid token' });
-        }
-        const hashedPassword = await bcrypt.hash(password, 10);
-        await User.findByIdAndUpdate(userId, { password: hashedPassword });
-        res.status(200).json({ msg: 'Password updated successfully' });
-    } catch (error) {
-        console.log('Error:', error);
-        res.status(400).json({ error: error });
+  const { userId, token } = req.params;
+  const { password } = req.body;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded._id !== userId) {
+      return res.status(400).json({ error: "Invalid token" });
     }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await User.findByIdAndUpdate(userId, { password: hashedPassword });
+    res.status(200).json({ msg: "Password updated successfully" });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 };
 
 const getUserInfo = async (req, res) => {
-    const userId = req.user._id; // Assuming you have a middleware that verifies the user and adds user information to the request object
-    console.log('User ID:', userId);
-    try {
-        const user = await User.findById(userId).select('-password'); // Exclude the password from the response
-        if (!user) {
-            return res.status(404).json({ error: 'User not found.' });
-        }
-        res.status(200).json({ user });
-    } catch (error) {
-        res.status(500).json({ error: 'Error fetching user information.' });
+  const { id } = req.params;
+  try {
+    const user = await User.findById(id).select("-password"); // Exclude the password from the response
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
     }
+    res.status(200).json({ user });
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching user information." });
+  }
+};
+
+const createDoctor = async (req, res) => {
+  try {
+    const {
+      user,
+      specialization,
+      cnic,
+      address,
+      rating,
+      reviewCount,
+      numPatients,
+      about,
+      officeHours,
+      education,
+    } = req.body;
+
+    const newDoctor = await Doctor.create({
+      user,
+      specialization,
+      cnic,
+      address,
+      rating,
+      reviewCount,
+      numPatients,
+      about,
+      officeHours,
+      education,
+    });
+
+    res.status(201).json({ success: true, doctor: newDoctor });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+const createPatient = async (req, res) => {
+  try {
+    const { user, dateOfBirth, bloodType } = req.body;
+
+    if (!user || !dateOfBirth || !bloodType) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const newPatient = new Patient({
+      user,
+      dateOfBirth,
+      bloodType,
+    });
+
+    await newPatient.save();
+
+    res
+      .status(201)
+      .json({ message: "Patient created successfully", patient: newPatient });
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+const updateUser = async (req, res) => {
+  const { id } = req.params;
+  const { userName, email, password, avatar, role } = req.body;
+
+  try {
+    if (req.user._id.toString() !== id) {
+      return res
+        .status(403)
+        .json({ error: "You are not authorized to update this user" });
+    }
+
+    const updateFields = { userName, email, avatar };
+    if (password) {
+      updateFields.password = await bcrypt.hash(password, 10);
+    }
+
+    if (role === "patient") {
+      const { dateOfBirth, bloodType } = req.body;
+      await Patient.findOneAndUpdate(
+        { user: id },
+        { dateOfBirth, bloodType },
+        { new: true }
+      );
+    }
+
+    if (role === "doctor") {
+      const { cnic, address, specialization, education } = req.body;
+      await Doctor.findOneAndUpdate(
+        { user: id },
+        { cnic, address, specialization, education },
+        { new: true }
+      );
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(id, updateFields, {
+      new: true,
+    });
+    res
+      .status(200)
+      .json({ msg: "User updated successfully", user: updatedUser });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const updateDoctorInfo = async (req, res) => {
+  const { id } = req.params;
+  const updateFields = req.body;
+
+  console.log("Received request to update doctor with user ID:", id);
+
+  try {
+    // Validate if the id is a valid ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      console.log("Invalid user ID format:", id);
+      return res.status(400).json({ error: "Invalid user ID format" });
+    }
+
+    console.log("User ID is valid, proceeding to manually find the doctor...");
+
+    // Manually find the doctor document in the doctors collection using the user ID as a string
+    const db = mongoose.connection.db;
+    const doctorsCursor = await db.collection("doctors").find({ user: id });
+
+    // Convert cursor to array to retrieve the doctor document
+    const doctors = await doctorsCursor.toArray();
+
+    if (doctors.length === 0) {
+      console.log("Doctor not found for user ID:", id);
+      return res
+        .status(404)
+        .json({ error: "Doctor not found for the given user ID" });
+    }
+
+    const doctor = doctors[0];
+    console.log("Doctor found:", doctor);
+
+    // Manually update the doctor document
+    const updateResult = await db
+      .collection("doctors")
+      .updateOne({ _id: doctor._id }, { $set: updateFields });
+
+    if (updateResult.modifiedCount === 0) {
+      console.log("Failed to update doctor information for ID:", doctor._id);
+      return res
+        .status(500)
+        .json({ error: "Failed to update doctor information" });
+    }
+
+    // Retrieve the updated doctor information
+    const updatedDoctorCursor = await db
+      .collection("doctors")
+      .find({ _id: doctor._id });
+    const updatedDoctors = await updatedDoctorCursor.toArray();
+    const updatedDoctor = updatedDoctors[0];
+
+    console.log("Doctor updated successfully:", updatedDoctor);
+
+    res.status(200).json({
+      msg: "Doctor information updated successfully",
+      doctor: updatedDoctor,
+    });
+  } catch (error) {
+    console.log("Internal server error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const getDoctorById = async (req, res) => {
+  const { id: doctorId } = req.params;
+
+  try {
+    const doctor = await Doctor.findById(doctorId).populate(
+      "user",
+      "-password"
+    );
+    if (!doctor) {
+      return res.status(404).json({ error: "Doctor not found." });
+    }
+    res.status(200).json(doctor);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "An error occurred while fetching doctor info." });
+  }
+};
+
+const getDoctorsBySatisfaction = async (req, res) => {
+  try {
+    // Fetch all doctors with populated user information
+    const doctors = await Doctor.find({}).populate("user"); // Populate the user field with User data
+
+    // Map over doctors to include user info
+    const doctorsWithUser = doctors.map((doctor) => ({
+      ...doctor.toObject(),
+      user: doctor.user ? doctor.user.toObject() : null, // Ensure user info is included
+    }));
+
+    // Sort doctors by rating in descending order
+    const sortedDoctors = doctorsWithUser.sort((a, b) => b.rating - a.rating);
+
+    res.status(200).json(sortedDoctors);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching doctors." });
+  }
+};
+
+const getAllDoctors = async (req, res) => {
+  try {
+    const doctors = await Doctor.find({});
+    res.status(200).json(doctors);
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching doctors." });
+  }
+};
+
+const deleteUser = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (user.role === "doctor") {
+      await Doctor.findOneAndDelete({ user: id });
+    } else if (user.role === "patient") {
+      await Patient.findOneAndDelete({ user: id });
+    }
+
+    await User.findByIdAndDelete(id);
+    res.status(200).json({ msg: "User deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Error deleting user." });
+  }
+};
+
+const updatePassword = async (req, res) => {
+  const { userId, newPassword } = req.body;
+
+  try {
+    // Validate that both userId and newPassword are provided
+    if (!userId || !newPassword) {
+      return res
+        .status(400)
+        .json({ error: "User ID and new password are required" });
+    }
+
+    // Check if the new password meets the criteria
+    if (newPassword.length < 8) {
+      return res
+        .status(400)
+        .json({ error: "Password should be at least 8 characters long" });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update the user's password
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { password: hashedPassword },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.status(200).json({ msg: "Password updated successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Error updating password" });
+  }
 };
 
 module.exports = {
-    registerUser,
-    loginUser,
-    verifyUser,
-    updateUser,
-    deleteUser,
-    forgotPassword,
-    resetPassword,
-    getUserInfo
+  registerUser,
+  loginUser,
+  verifyUser,
+  forgotPassword,
+  resetPassword,
+  getUserInfo,
+  createDoctor,
+  createPatient,
+  updateUser,
+  updateDoctorInfo,
+  getDoctorById,
+  getDoctorsBySatisfaction,
+  getAllDoctors,
+  deleteUser,
+  updatePassword,
 };
