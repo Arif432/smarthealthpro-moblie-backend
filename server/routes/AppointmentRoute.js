@@ -9,18 +9,20 @@ const {
   deleteAppointment,
   getAppointmentsByPatientId,
   getAppointmentsByDoctorId,
+  scheduleAppointments,
 } = require("../controllers/AppointmentController");
 
 // router.use(verifyUser);
 router.get("/getAllAppointments", getAppointments);
 router.get("/getSingleAppointment/:id", getAppointmentById);
-router.post("/postAppointment", createAppointment);
-router.put("/updateAppointment/:id", updateAppointment);
-router.delete("/deleteAppointment/:id", deleteAppointment);
 router.get(
   "/getAppointmentsByPatientId/:patientId",
   getAppointmentsByPatientId
 );
 router.get("/getAppointmentsByDoctorId/:doctorId", getAppointmentsByDoctorId);
+router.post("/postAppointment", createAppointment);
+router.post("/scheduleAppointments", scheduleAppointments);
+router.put("/updateAppointment/:id", updateAppointment);
+router.delete("/deleteAppointment/:id", deleteAppointment);
 
 module.exports = router;

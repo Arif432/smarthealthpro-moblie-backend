@@ -27,23 +27,14 @@ const appointmentSchema = new mongoose.Schema({
     required: true,
   },
   date: {
-    type: Date,
+    type: String,
     required: true,
   },
-  availableTimeSlots: [
-    {
-      type: String,
-      required: true,
-    },
-  ],
-  selectedTimeSlot: {
-    type: String, // This will store the selected time slot
-    required: true,
-  },
+
   appointmentStatus: {
     type: String,
-    enum: ["pending", "visited", "cancelled"],
-    default: "pending",
+    enum: ["tbd", "pending", "visited", "cancelled"],
+    default: "tbd",
   },
   description: {
     type: String,
@@ -51,6 +42,16 @@ const appointmentSchema = new mongoose.Schema({
   },
   location: {
     type: String,
+    required: true,
+  },
+  priority: {
+    type: String,
+    default: "low",
+    required: true,
+  },
+  bookedOn: {
+    type: Date,
+    required: true,
   },
 });
 
