@@ -28,7 +28,7 @@ const appointmentSchema = new mongoose.Schema({
   },
   date: {
     type: String,
-    required: true,
+    required: false,
   },
 
   appointmentStatus: {
@@ -50,7 +50,7 @@ const appointmentSchema = new mongoose.Schema({
     required: true,
   },
   bookedOn: {
-    type: Date,
+    type: String,
     required: true,
   },
 });
