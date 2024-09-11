@@ -22,9 +22,20 @@ const appointmentSchema = new mongoose.Schema({
     },
   },
   patient: {
-    type: String,
-    ref: "Patient",
-    required: true,
+    id: {
+      type: String,
+      ref: "Patient",
+      required: true,
+    },
+    name: {
+      type: String,
+      required: true,
+    },
+    avatar: {
+      type: String,
+      default:
+        "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
+    },
   },
   date: {
     type: String,
