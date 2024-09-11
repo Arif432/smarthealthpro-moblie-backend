@@ -6,7 +6,24 @@ const { User, Doctor, Patient } = require("../models/UserModal");
 const { ObjectId } = mongoose.Types;
 
 const registerUser = async (req, res) => {
-  const { fullName, email, password, role, dateOfBirth, bloodType } = req.body;
+  const {
+    fullName,
+    email,
+    password,
+    role,
+    avatar,
+    dateOfBirth,
+    bloodType,
+    specialization,
+    cnic,
+    address,
+    rating,
+    reviewCount,
+    numPatients,
+    about,
+    officeHours,
+    education,
+  } = req.body;
 
   try {
     // Check for required fields first
@@ -52,7 +69,7 @@ const registerUser = async (req, res) => {
 
     // Create the patient record if role is 'patient'
     let newPatient = null;
-    if (role === 'patient') {
+    if (role === "patient") {
       newPatient = await Patient.create({
         userId: user._id, // Link the patient record to the user's ID
         dateOfBirth,
@@ -60,14 +77,20 @@ const registerUser = async (req, res) => {
       });
     }
 
-    if (role == 'doctor') {
-      newPatient = await Patient.create({
+    if (role == "doctor") {
+      newPatient = await Doctor.create({
         userId: user._id, // Link the patient record to the user's ID
-        dateOfBirth,
-        bloodType,
+        specialization,
+        cnic,
+        address,
+        rating,
+        reviewCount,
+        numPatients,
+        about,
+        officeHours,
+        education,
       });
     }
-
 
     // Send a single response after both user and patient are created
     res.status(201).json({
