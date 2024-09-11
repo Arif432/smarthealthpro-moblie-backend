@@ -6,9 +6,14 @@ const { User, Doctor, Patient } = require("../models/UserModal");
 const { ObjectId } = mongoose.Types;
 
 const registerUser = async (req, res) => {
-  const { fullName, email, password, role } = req.body;
+  const { fullName, email, password, role, dateOfBirth, bloodType } = req.body;
 
   try {
+    // Check for required fields first
+    if (!dateOfBirth || !bloodType) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
     // Generate a base username from the name
     let userName = fullName.replace(/\s+/g, "").toLowerCase();
     let uniqueUserName = userName;
@@ -45,7 +50,31 @@ const registerUser = async (req, res) => {
       role,
     });
 
-    res.status(201).json({ user: user._id });
+    // Create the patient record if role is 'patient'
+    let newPatient = null;
+    if (role === 'patient') {
+      newPatient = await Patient.create({
+        userId: user._id, // Link the patient record to the user's ID
+        dateOfBirth,
+        bloodType,
+      });
+    }
+
+    if (role == 'doctor') {
+      newPatient = await Patient.create({
+        userId: user._id, // Link the patient record to the user's ID
+        dateOfBirth,
+        bloodType,
+      });
+    }
+
+
+    // Send a single response after both user and patient are created
+    res.status(201).json({
+      message: "User and patient created successfully",
+      user: user._id,
+      patient: newPatient ? newPatient._id : null,
+    });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(400).json({ error: "Email already exists" });
