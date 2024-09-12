@@ -26,9 +26,9 @@ const registerUser = async (req, res) => {
   } = req.body;
 
   try {
-    // Check for required fields first
-    if (!dateOfBirth || !bloodType) {
-      return res.status(400).json({ message: "Missing required fields" });
+    // Check for required fields only for patients
+    if (role === "patient" && (!dateOfBirth || !bloodType)) {
+      return res.status(400).json({ message: "Missing required fields for patient" });
     }
 
     // Generate a base username from the name
@@ -68,18 +68,22 @@ const registerUser = async (req, res) => {
     });
 
     // Create the patient record if role is 'patient'
-    let newPatient = null;
+    let newRecord = null;
     if (role === "patient") {
-      newPatient = await Patient.create({
+      newRecord = await Patient.create({
         userId: user._id, // Link the patient record to the user's ID
         dateOfBirth,
         bloodType,
       });
     }
 
-    if (role == "doctor") {
-      newPatient = await Doctor.create({
-        userId: user._id, // Link the patient record to the user's ID
+    // Create the doctor record if role is 'doctor'
+    if (role === "doctor") {
+      newRecord = await Doctor.create({
+        userId: user._id, // Link the doctor record to the user's ID
+        userName: uniqueUserName,
+        fullName,
+        email,
         specialization,
         cnic,
         address,
@@ -89,14 +93,15 @@ const registerUser = async (req, res) => {
         about,
         officeHours,
         education,
+        avatar,
       });
     }
 
-    // Send a single response after both user and patient are created
+    // Send a single response after both user and record are created
     res.status(201).json({
-      message: "User and patient created successfully",
+      message: "User and record created successfully",
       user: user._id,
-      patient: newPatient ? newPatient._id : null,
+      record: newRecord ? newRecord._id : null,
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -105,6 +110,7 @@ const registerUser = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
