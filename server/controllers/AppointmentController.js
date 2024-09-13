@@ -276,11 +276,14 @@ const getAvailableDoctors = async (req, res) => {
     );
 
     if (!specializations || Object.keys(specializations).length === 0) {
-      throw new Error("No specializations provided in the request body");
+      return res.status(400).json({
+        success: false,
+        message: "No specializations provided in the request body",
+      });
     }
 
     const startDate = moment().add(1, "days").startOf("day");
-    const endDate = moment(startDate).add(7, "days"); // Search for up to a week
+    const endDate = moment(startDate).add(7, "days");
     console.log(
       `3. Checking availability from ${startDate.format(
         "YYYY-MM-DD"
@@ -291,22 +294,31 @@ const getAvailableDoctors = async (req, res) => {
     let doctors;
     try {
       console.log("4. Fetching doctors from database");
-      doctors = await Doctor.find().populate("user", "-password");
+      doctors = await Doctor.find({
+        specialization: { $in: Object.keys(specializations) },
+      }).populate("user", "-password");
       console.log(`5. Retrieved ${doctors.length} doctors from database`);
       if (doctors.length === 0) {
-        throw new Error("No doctors found in the database");
+        return res.status(404).json({
+          success: false,
+          message: "No doctors found for the requested specializations",
+        });
       }
     } catch (error) {
       console.error("6. Error fetching doctors:", error);
-      throw new Error(
-        "Failed to fetch doctors from database: " + error.message
-      );
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch doctors from database",
+        error: error.message,
+      });
     }
 
     // Step 2: Filter doctors based on availability for the next week
     let availableDoctors = [];
     try {
       console.log("7. Starting to filter doctors based on availability");
+      const appointmentPromises = [];
+
       for (
         let currentDate = moment(startDate);
         currentDate.isSameOrBefore(endDate);
@@ -320,74 +332,75 @@ const getAvailableDoctors = async (req, res) => {
         );
 
         for (const doctor of doctors) {
-          if (!doctor.officeHours) {
-            console.log(
-              `Doctor ${doctor._id} has no office hours defined, skipping`
-            );
+          if (
+            !doctor.officeHours ||
+            !doctor.officeHours[dayOfWeek] ||
+            doctor.officeHours[dayOfWeek] === "Closed"
+          ) {
             continue;
           }
 
-          if (availableDoctors.some((d) => d.doctor._id.equals(doctor._id)))
-            continue; // Skip if doctor already added
-
-          const officeHours = doctor.officeHours[dayOfWeek];
-          if (officeHours === "Closed") continue;
-
-          const [start, end] = officeHours.split(" - ");
+          const [start, end] = doctor.officeHours[dayOfWeek].split(" - ");
           const startTime = moment(start, "hh:mm A");
           const endTime = moment(end, "hh:mm A");
-          const totalSlots = endTime.diff(startTime, "minutes") / 30;
+          const totalSlots = Math.floor(
+            endTime.diff(startTime, "minutes") / 30
+          );
 
-          const appointments = await Appointment.find({
-            "doctor.id": doctor._id,
-            date: currentDate.toDate(),
-            appointmentStatus: { $in: ["pending", "confirmed"] },
-          });
-
-          if (appointments.length < totalSlots) {
-            availableDoctors.push({
-              doctor: doctor,
+          appointmentPromises.push(
+            Appointment.countDocuments({
+              "doctor.id": doctor._id,
+              date: currentDate.toDate(),
+              appointmentStatus: { $in: ["pending", "confirmed"] },
+            }).then((count) => ({
+              doctor,
               availableDate: currentDate.toDate(),
-              totalSlots: totalSlots,
-              bookedSlots: appointments.length,
-            });
-            console.log(
-              `9. Doctor ${doctor._id} is available on ${currentDate.format(
-                "YYYY-MM-DD"
-              )}`
-            );
-          }
-
-          if (availableDoctors.length >= 6) break; // Stop if we have enough doctors
+              totalSlots,
+              bookedSlots: count,
+            }))
+          );
         }
-
-        if (availableDoctors.length >= 6) break; // Stop if we have enough doctors
       }
 
-      console.log(`10. Found ${availableDoctors.length} available doctors`);
+      const results = await Promise.all(appointmentPromises);
+      availableDoctors = results.filter(
+        (result) => result.bookedSlots < result.totalSlots
+      );
+
+      console.log(`9. Found ${availableDoctors.length} available doctors`);
       if (availableDoctors.length === 0) {
-        throw new Error("No available doctors found for the given date range");
+        return res.status(404).json({
+          success: false,
+          message: "No available doctors found for the given date range",
+        });
       }
     } catch (error) {
-      console.error("11. Error filtering available doctors:", error);
-      throw new Error("Failed to filter available doctors: " + error.message);
+      console.error("10. Error filtering available doctors:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to filter available doctors",
+        error: error.message,
+      });
     }
 
     // Step 3: Select doctors based on specialization percentages and ratings
-    const totalDoctors = Math.min(6, availableDoctors.length);
-    const selectedDoctors = [];
+    const totalDoctors = 5; // Set this to your desired number of doctors to return
+    let selectedDoctors = [];
 
     try {
-      console.log("12. Starting doctor selection process");
+      console.log("11. Starting doctor selection process");
       // Group doctors by specialization and sort by availability date and rating
-      const doctorsBySpecialization = {};
-      for (const doctorInfo of availableDoctors) {
-        const { doctor } = doctorInfo;
-        if (!doctorsBySpecialization[doctor.specialization]) {
-          doctorsBySpecialization[doctor.specialization] = [];
-        }
-        doctorsBySpecialization[doctor.specialization].push(doctorInfo);
-      }
+      const doctorsBySpecialization = availableDoctors.reduce(
+        (acc, doctorInfo) => {
+          const { doctor } = doctorInfo;
+          if (!acc[doctor.specialization]) {
+            acc[doctor.specialization] = [];
+          }
+          acc[doctor.specialization].push(doctorInfo);
+          return acc;
+        },
+        {}
+      );
 
       for (const specialization in doctorsBySpecialization) {
         doctorsBySpecialization[specialization].sort((a, b) => {
@@ -399,7 +412,7 @@ const getAvailableDoctors = async (req, res) => {
       }
 
       console.log(
-        "13. Doctors grouped and sorted by specialization, date, and rating"
+        "12. Doctors grouped and sorted by specialization, date, and rating"
       );
       console.log(
         "Available specializations:",
@@ -407,110 +420,71 @@ const getAvailableDoctors = async (req, res) => {
       );
 
       // Calculate the number of doctors needed for each specialization
-      const doctorCounts = {};
-      let remainingDoctors = totalDoctors;
-      const sortedSpecializations = Object.entries(specializations).sort(
-        (a, b) => b[1] - a[1]
-      ); // Sort by percentage descending
-
-      console.log("13a. Total doctors to allocate:", totalDoctors);
-
-      // Allocate doctors based on percentages
-      for (const [specialization, percentage] of sortedSpecializations) {
-        const exactCount = (percentage / 100) * totalDoctors;
-        const roundedCount = Math.round(exactCount);
-        doctorCounts[specialization] = Math.min(roundedCount, remainingDoctors);
-        remainingDoctors -= doctorCounts[specialization];
-      }
-
-      console.log(
-        "13b. After initial allocation:",
-        doctorCounts,
-        "Remaining:",
-        remainingDoctors
+      const doctorCounts = Object.entries(specializations).reduce(
+        (acc, [spec, percentage]) => {
+          acc[spec] = Math.round((percentage / 100) * totalDoctors);
+          return acc;
+        },
+        {}
       );
 
-      // If we have any remaining doctors due to rounding, allocate them to the specialization with the highest decimal part
-      if (remainingDoctors > 0) {
-        const decimalParts = sortedSpecializations
-          .map(([spec, percentage]) => ({
-            spec,
-            decimal: ((percentage / 100) * totalDoctors) % 1,
-          }))
-          .sort((a, b) => b.decimal - a.decimal);
-
-        for (const { spec } of decimalParts) {
-          if (remainingDoctors > 0) {
-            doctorCounts[spec]++;
-            remainingDoctors--;
-          } else {
-            break;
-          }
-        }
-      }
-
-      console.log("14. Final calculated doctor counts:", doctorCounts);
-
-      // Adjust based on actual availability while trying to maintain original percentages
-      let totalSelectedDoctors = 0;
-      for (const specialization in doctorCounts) {
-        const availableCount = doctorsBySpecialization[specialization]
-          ? doctorsBySpecialization[specialization].length
-          : 0;
-        doctorCounts[specialization] = Math.min(
-          doctorCounts[specialization],
-          availableCount
-        );
-        totalSelectedDoctors += doctorCounts[specialization];
-      }
-
-      // If we have fewer doctors than needed, try to fill from other specializations
-      if (totalSelectedDoctors < totalDoctors) {
-        const sortedSpecializations = Object.entries(specializations)
-          .sort((a, b) => b[1] - a[1])
-          .map(([spec]) => spec);
-
-        for (const specialization of sortedSpecializations) {
-          const availableCount = doctorsBySpecialization[specialization]
-            ? doctorsBySpecialization[specialization].length
-            : 0;
-          while (
-            doctorCounts[specialization] < availableCount &&
-            totalSelectedDoctors < totalDoctors
-          ) {
-            doctorCounts[specialization]++;
-            totalSelectedDoctors++;
-          }
-          if (totalSelectedDoctors >= totalDoctors) break;
-        }
-      }
-
-      console.log(
-        "15. Adjusted doctor counts based on availability:",
-        doctorCounts
-      );
+      console.log("13. Calculated doctor counts:", doctorCounts);
 
       // Select doctors based on calculated counts
       for (const [specialization, count] of Object.entries(doctorCounts)) {
         console.log(
-          `16. Attempting to select ${count} doctors for ${specialization}`
+          `14. Attempting to select ${count} doctors for ${specialization}`
         );
         const availableDoctorsForSpec =
           doctorsBySpecialization[specialization] || [];
         const selected = availableDoctorsForSpec.slice(0, count);
-        selectedDoctors.push(...selected);
-        console.log(
-          `17. Selected ${selected.length} doctors for ${specialization}`
+        selectedDoctors.push(
+          ...selected.map((d) => ({ ...d, specialization }))
         );
+
+        // Remove selected doctors from the pool
+        doctorsBySpecialization[specialization] =
+          availableDoctorsForSpec.slice(count);
       }
 
-      console.log(`18. Final selection: ${selectedDoctors.length} doctors`);
+      // If we have fewer doctors than needed, fill from other specializations
+      while (selectedDoctors.length < totalDoctors) {
+        for (const specialization in doctorsBySpecialization) {
+          if (selectedDoctors.length >= totalDoctors) break;
+          const availableDoctors = doctorsBySpecialization[specialization];
+          if (availableDoctors.length > 0) {
+            const doctor = availableDoctors.shift();
+            selectedDoctors.push({ ...doctor, specialization });
+          }
+        }
+        if (selectedDoctors.length === totalDoctors) break;
+      }
+
+      console.log(
+        "15. Selected doctors before shuffling:",
+        selectedDoctors.map((d) => d.specialization)
+      );
 
       if (selectedDoctors.length === 0) {
-        throw new Error(
-          "No doctors could be selected based on the given criteria"
-        );
+        return res.status(404).json({
+          success: false,
+          message: "No doctors could be selected based on the given criteria",
+        });
       }
+
+      // Shuffle the selected doctors
+      for (let i = selectedDoctors.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [selectedDoctors[i], selectedDoctors[j]] = [
+          selectedDoctors[j],
+          selectedDoctors[i],
+        ];
+      }
+
+      console.log(
+        "16. Selected doctors after shuffling:",
+        selectedDoctors.map((d) => d.specialization)
+      );
 
       // Prepare the final response
       const finalSelection = selectedDoctors.map((doctorInfo) => ({
@@ -520,29 +494,21 @@ const getAvailableDoctors = async (req, res) => {
         bookedSlots: doctorInfo.bookedSlots,
       }));
 
-      // Shuffle the selected doctors to randomize the order
-      for (let i = finalSelection.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [finalSelection[i], finalSelection[j]] = [
-          finalSelection[j],
-          finalSelection[i],
-        ];
-      }
-      console.log("19. Shuffled the selected doctors");
-
       res.status(200).json({
         success: true,
         count: finalSelection.length,
         data: finalSelection,
       });
     } catch (error) {
-      console.error("20. Error in doctor selection process:", error);
-      throw new Error(
-        "Failed to select doctors based on criteria: " + error.message
-      );
+      console.error("17. Error in doctor selection process:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to select doctors based on criteria",
+        error: error.message,
+      });
     }
   } catch (error) {
-    console.error("21. Fatal error in getAvailableDoctors:", error);
+    console.error("18. Fatal error in getAvailableDoctors:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching available doctors",
@@ -550,6 +516,8 @@ const getAvailableDoctors = async (req, res) => {
     });
   }
 };
+
+module.exports = getAvailableDoctors;
 
 module.exports = {
   createAppointment,
