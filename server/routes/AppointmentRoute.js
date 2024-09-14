@@ -21,7 +21,7 @@ router.get(
   getAppointmentsByPatientId
 );
 router.get("/getAppointmentsByDoctorId/:doctorId", getAppointmentsByDoctorId);
-router.get("/getAvailableDoctors", getAvailableDoctors);
+router.post("/getAvailableDoctors", getAvailableDoctors);
 router.post("/postAppointment", createAppointment);
 router.post("/scheduleAppointments", scheduleAppointments);
 router.put("/updateAppointment/:id", updateAppointment);
