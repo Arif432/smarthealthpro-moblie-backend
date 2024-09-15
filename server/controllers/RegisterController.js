@@ -403,19 +403,37 @@ const getDoctorById = async (req, res) => {
   }
 };
 
+const calculateSatisfactionRatio = (doctor) => {
+  if (typeof doctor.rating !== 'number' || typeof doctor.reviewCount !== 'number') {
+    return null;
+  }
+  return (doctor.rating * Math.log(doctor.reviewCount + 1)) / 5;
+};
+
+
+// Suggested fix for the getDoctorsBySatisfaction function
 const getDoctorsBySatisfaction = async (req, res) => {
   try {
-    // Fetch all doctors with populated user information
-    const doctors = await Doctor.find({}).populate("user"); // Populate the user field with User data
+    const doctors = await Doctor.find({}).populate("user");
 
-    // Map over doctors to include user info
-    const doctorsWithUser = doctors.map((doctor) => ({
-      ...doctor.toObject(),
-      user: doctor.user ? doctor.user.toObject() : null, // Ensure user info is included
-    }));
+    const doctorsWithUser = doctors
+      .filter(doctor => doctor.user)
+      .map((doctor) => {
+        const userObj = doctor.user.toObject();
+        const doctorObj = doctor.toObject();
+        
+        const satisfactionRatio = calculateSatisfactionRatio(doctorObj);
 
-    // Sort doctors by rating in descending order
-    const sortedDoctors = doctorsWithUser.sort((a, b) => b.rating - a.rating);
+        return {
+          ...doctorObj,
+          user: userObj,
+          satisfactionRatio
+        };
+      });
+
+    const sortedDoctors = doctorsWithUser.sort((a, b) => 
+      (b.satisfactionRatio || 0) - (a.satisfactionRatio || 0)
+    );
 
     res.status(200).json(sortedDoctors);
   } catch (error) {
