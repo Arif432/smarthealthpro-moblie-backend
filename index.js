@@ -284,3 +284,69 @@ app.get("/conversations/getOrCreate/:doctorId/:patientId", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+
+
+app.put('/conversations/:id/lastMessage', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { lastMessage } = req.body;
+
+    console.log('Received ID:', id);
+    console.log('Received lastMessage:', lastMessage);
+
+    // Create a query that checks for both string and ObjectId
+    let query = {
+      $or: [
+        { _id: id },
+        { _id: ObjectId.isValid(id) ? new ObjectId(id) : null }
+      ]
+    };
+
+    console.log('Querying the database with:', query);
+
+    // Get the database and collection
+    const db = mongoose.connection.db;
+    const collection = db.collection('conversations');
+
+    // Find the document
+    const conversation = await collection.findOne(query);
+
+    // Check if the conversation was found
+    if (!conversation) {
+      console.log('Conversation not found with ID:', id);
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    // Update the document
+    const updateResult = await collection.updateOne(
+      query,
+      {
+        $set: {
+          lastMessage: lastMessage,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Log update result
+    console.log('Update result:', updateResult);
+
+    if (updateResult.matchedCount === 0) {
+      console.log('No documents matched the query');
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    // Retrieve the updated document to send in the response
+    const updatedConversation = await collection.findOne(query);
+
+    // Log the updated document
+    console.log('Updated conversation:', updatedConversation);
+
+    res.json(updatedConversation);
+  } catch (error) {
+    console.error('Error updating last message:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
