@@ -71,7 +71,7 @@ const registerUser = async (req, res) => {
     let newRecord = null;
     if (role === "patient") {
       newRecord = await Patient.create({
-        userId: user._id, // Link the patient record to the user's ID
+        user: user._id, // Link the patient record to the user's ID
         dateOfBirth,
         bloodType,
       });
@@ -80,7 +80,7 @@ const registerUser = async (req, res) => {
     // Create the doctor record if role is 'doctor'
     if (role === "doctor") {
       newRecord = await Doctor.create({
-        userId: user._id, // Link the doctor record to the user's ID
+        user: user._id, // Link the doctor record to the user's ID
         userName: uniqueUserName,
         fullName,
         email,
