@@ -281,8 +281,12 @@ const getAvailableDoctors = async (req, res) => {
     try {
       console.log("4. Fetching doctors from database");
       const query = specializations && Object.keys(specializations).length > 0
-        ? { specialization: { $in: Object.keys(specializations) } }
-        : {};
+  ? {
+      specialization: {
+        $in: Object.keys(specializations).map(spec => new RegExp(`^${spec}$`, 'i'))
+      }
+    }
+  : {};
       doctors = await Doctor.find(query).populate("user", "-password");
       console.log(`5. Retrieved ${doctors.length} doctors from database`);
       if (doctors.length === 0) {
