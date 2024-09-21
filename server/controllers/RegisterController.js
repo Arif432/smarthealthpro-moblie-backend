@@ -2,8 +2,10 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { User, Doctor, Patient } = require("../models/UserModal");
+const { getURI } = require("../../utils/features");
 // const { sendMail } = require('../utils/nodemailerConfig');
 const { ObjectId } = mongoose.Types;
+const cloudinary = require("cloudinary")
 
 const registerUser = async (req, res) => {
   const {
@@ -510,7 +512,66 @@ const updatePassword = async (req, res) => {
   }
 };
 
+const updateProfilePic = async (req, res) => {
+  try {
+    console.log("User ID and File:", req.body.id, req.file); // For debugging
+
+    // Find user by ID
+    const user = await User.findById(req.body.id);
+    if (!user) {
+      return res.status(404).send({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check if a file is provided
+    if (!req.file) {
+      return res.status(400).send({
+        success: false,
+        message: "File is required",
+      });
+    }
+
+    const file = getURI(req.file); // Convert file to Data URI
+
+    // Check if user has an avatar and public_id exists
+    if (user.avatar && user.avatar.public_id) {
+      console.log("Deleting previous avatar:", user.avatar.public_id);
+      await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+    } else {
+      console.log("No previous avatar to delete.");
+    }
+
+    // Upload the new avatar
+    const uploadResult = await cloudinary.v2.uploader.upload(file.content);
+    
+    // Update user's avatar information
+    user.avatar = {
+      public_id: uploadResult.public_id,
+      url: uploadResult.secure_url,
+    };
+
+    // Save the updated user data
+    await user.save();
+
+    res.status(200).send({
+      success: true,
+      message: "Profile picture updated successfully",
+    });
+    
+  } catch (error) {
+    console.error("Error updating profile picture:", error);
+    res.status(500).send({
+      success: false,
+      message: "Error updating profile picture",
+    });
+  }
+};
+
+
 module.exports = {
+  updateProfilePic,
   registerUser,
   loginUser,
   verifyUser,

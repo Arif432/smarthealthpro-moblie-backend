@@ -17,7 +17,9 @@ const {
   createPatient,
   updateDoctorInfo,
   updatePassword,
+  updateProfilePic,
 } = require("../controllers/RegisterController");
+const { singlePic } = require("../../middle/multer");
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.get("/logout", (req, res) => {
@@ -41,5 +43,6 @@ router.post("/createDoctor", createDoctor);
 router.post("/createPatient", createPatient);
 router.post("/updateDoctorInfo/:id", updateDoctorInfo);
 router.post("/updatePassword", updatePassword);
+router.put("/updateProfile",singlePic,updateProfilePic)
 
 module.exports = router;

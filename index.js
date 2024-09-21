@@ -1,3 +1,4 @@
+const cloudinary  = require("cloudinary")
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -8,9 +9,17 @@ const appointmentRoutes = require("./server/routes/AppointmentRoute");
 const chatRoutes = require("./server/routes/chatRoutes");
 const { ObjectId } = require("mongodb");
 const { Conversation } = require("./server/models/ChatMessageModal");
+const { CLOUDNARY, KEY, SECRET } = require('./cloud');
 require("dotenv").config();
-const app = express();
 
+cloudinary.v2.config({
+  cloud_name: CLOUDNARY,
+  api_key : KEY,
+  api_secret : SECRET
+})
+
+
+const app = express();
 app.use(express.json());
 app.use(cookieParser());
 app.use(bodyParser.json());
