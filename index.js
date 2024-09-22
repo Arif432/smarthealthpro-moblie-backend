@@ -10,6 +10,9 @@ const chatRoutes = require("./server/routes/chatRoutes");
 const { ObjectId } = require("mongodb");
 const { Conversation } = require("./server/models/ChatMessageModal");
 const { CLOUDNARY, KEY, SECRET } = require('./cloud');
+const serviceAccount = require('/Users/zr/documents/pushnotification-a06c5-firebase-adminsdk-8tbpj-7e2aa5d614.json')
+const admin = require('firebase-admin');
+
 require("dotenv").config();
 
 cloudinary.v2.config({
@@ -358,4 +361,45 @@ app.put('/conversations/:id/lastMessage', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+// API endpoint to send a notification
+app.post('/api/send-notification', async (req, res) => {
+  const { token, title, body } = req.body;
+
+  const message = {
+    notification: {
+      title,
+      body
+    },
+    token: token
+  };
+
+  try {
+    const response = await admin.messaging().send(message);
+    console.log('Successfully sent message:', response);
+    res.status(200).json({ success: true, response });
+  } catch (error) {
+    console.log('Error sending message:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API endpoint to store or update a user's FCM token
+app.post('/api/store-token', async (req, res) => {
+  const { userId, token } = req.body;
+  
+  // Here you would typically store the token in your database
+  // For this example, we'll just log it
+  console.log(`Storing token for user ${userId}: ${token}`);
+  
+  res.status(200).json({ success: true });
+});
+
+
+
+
 
