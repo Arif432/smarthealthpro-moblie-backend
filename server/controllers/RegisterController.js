@@ -569,29 +569,6 @@ const updateProfilePic = async (req, res) => {
   }
 };
 
-const getAllPatients = async (req, res) => {
-  try {
-    const patients = await Patient.find({}).populate("user");
-
-    const patientsWithUser = patients
-      .filter(patient => patient.user)
-      .map((patient) => {
-        const userObj = patient.user.toObject();
-        const doctorObj = patient.toObject();
-
-        return {
-          ...doctorObj,
-          user: userObj,
-        };
-      });
-
-    res.status(200).json(patientsWithUser);
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching doctors." });
-  }
-};
-
-
 
 module.exports = {
   updateProfilePic,
@@ -610,5 +587,4 @@ module.exports = {
   getAllDoctors,
   deleteUser,
   updatePassword,
-  getAllPatients
 };
