@@ -1,5 +1,21 @@
 const mongoose = require("mongoose");
 
+const userDeviceSchema = new mongoose.Schema({
+  fcmToken: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  device: {
+    type: String,
+    required: true,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 // Common User Schema
 const UserSchema = new mongoose.Schema({
   userName: {
@@ -25,12 +41,14 @@ const UserSchema = new mongoose.Schema({
     enum: ["patient", "doctor"], // Role must be either 'patient' or 'doctor'
   },
   avatar: {
-    public_id : {
-      type:String
+    public_id: {
+      type: String,
     },
-    url :{
-      type:String
-  }}
+    url: {
+      type: String,
+    },
+  },
+  devices: [userDeviceSchema],
 });
 
 // Doctor Schema

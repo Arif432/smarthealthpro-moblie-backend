@@ -1,9 +1,10 @@
-const cloudinary  = require("cloudinary")
+const cloudinary = require("cloudinary");
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
+const admin = require("firebase-admin");
 const userRoutes = require("./server/routes/userRoutes");
 const appointmentRoutes = require("./server/routes/AppointmentRoute");
 const chatRoutes = require("./server/routes/chatRoutes");
@@ -15,12 +16,17 @@ const decryptText = require("./middle/encryptText")
 
 require("dotenv").config();
 
+const serviceAccount = require("./secrets/serviceAccountKey.json");
+const { User } = require("./server/models/UserModal");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 cloudinary.v2.config({
   cloud_name: CLOUDNARY,
-  api_key : KEY,
-  api_secret : SECRET
-})
-
+  api_key: KEY,
+  api_secret: SECRET,
+});
 
 const app = express();
 app.use(express.json());
@@ -302,68 +308,117 @@ app.get("/conversations/getOrCreate/:doctorId/:patientId", async (req, res) => {
   }
 });
 
-
-
-app.put('/conversations/:id/lastMessage', async (req, res) => {
+app.put("/conversations/:id/lastMessage", async (req, res) => {
   try {
     const { id } = req.params;
     const { lastMessage } = req.body;
 
-    console.log('Received ID:', id);
-    console.log('Received lastMessage:', lastMessage);
+    console.log("Received ID:", id);
+    console.log("Received lastMessage:", lastMessage);
 
     // Create a query that checks for both string and ObjectId
     let query = {
       $or: [
         { _id: id },
-        { _id: ObjectId.isValid(id) ? new ObjectId(id) : null }
-      ]
+        { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+      ],
     };
 
-    console.log('Querying the database with:', query);
+    console.log("Querying the database with:", query);
 
     // Get the database and collection
     const db = mongoose.connection.db;
-    const collection = db.collection('conversations');
+    const collection = db.collection("conversations");
 
     // Find the document
     const conversation = await collection.findOne(query);
 
     // Check if the conversation was found
     if (!conversation) {
-      console.log('Conversation not found with ID:', id);
-      return res.status(404).json({ message: 'Conversation not found' });
+      console.log("Conversation not found with ID:", id);
+      return res.status(404).json({ message: "Conversation not found" });
     }
 
     // Update the document
-    const updateResult = await collection.updateOne(
-      query,
-      {
-        $set: {
-          lastMessage: lastMessage,
-          updatedAt: new Date()
-        }
-      }
-    );
+    const updateResult = await collection.updateOne(query, {
+      $set: {
+        lastMessage: lastMessage,
+        updatedAt: new Date(),
+      },
+    });
 
     // Log update result
-    console.log('Update result:', updateResult);
+    console.log("Update result:", updateResult);
 
     if (updateResult.matchedCount === 0) {
-      console.log('No documents matched the query');
-      return res.status(404).json({ message: 'Conversation not found' });
+      console.log("No documents matched the query");
+      return res.status(404).json({ message: "Conversation not found" });
     }
 
     // Retrieve the updated document to send in the response
     const updatedConversation = await collection.findOne(query);
 
     // Log the updated document
-    console.log('Updated conversation:', updatedConversation);
+    console.log("Updated conversation:", updatedConversation);
 
     res.json(updatedConversation);
   } catch (error) {
-    console.error('Error updating last message:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error("Error updating last message:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
+app.post("/update-fcm-token", async (req, res) => {
+  const { email, fcmToken, device } = req.body;
+  if (!email || !fcmToken || !device) {
+    return res.status(400).json({ message: "Missing required fields" });
+  }
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    // Check if the token already exists
+    const existingDevice = user.devices.find((d) => d.fcmToken === fcmToken);
+    if (!existingDevice) {
+      // Add new device if it doesn't exist
+      user.devices.push({ fcmToken, device });
+      await user.save();
+    }
+    res.json({ message: "FCM token updated successfully" });
+  } catch (error) {
+    console.error("Error updating FCM token:", error);
+    res.status(500).json({ message: "Error updating FCM token" });
+  }
+});
+
+// Function to send notification to a specific user
+async function sendNotificationToUser(email, title, body) {
+  try {
+    const user = await User.findOne({ email });
+    if (!user || user.fcmTokens.length === 0) {
+      console.log("No FCM tokens found for user");
+      return;
+    }
+
+    const message = {
+      notification: {
+        title,
+        body,
+      },
+      tokens: user.fcmTokens,
+    };
+
+    const response = await admin.messaging().sendMulticast(message);
+    console.log("Notification sent successfully:", response);
+  } catch (error) {
+    console.error("Error sending notification:", error);
+  }
+}
+
+// Example route to send a notification
+app.post("/send-notification", async (req, res) => {
+  const { userId, title, body } = req.body;
+  await sendNotificationToUser(userId, title, body);
+  res.json({ message: "Notification sent" });
+});
