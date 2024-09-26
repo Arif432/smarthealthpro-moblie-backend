@@ -10,6 +10,9 @@ const chatRoutes = require("./server/routes/chatRoutes");
 const { ObjectId } = require("mongodb");
 const { Conversation } = require("./server/models/ChatMessageModal");
 const { CLOUDNARY, KEY, SECRET } = require('./cloud');
+const  encryptText = require("./middle/encryptText")
+const decryptText = require("./middle/encryptText")
+
 require("dotenv").config();
 
 cloudinary.v2.config({
@@ -204,10 +207,13 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
       return res.status(400).json({ error: "Content and sender are required" });
     }
 
+    const encryptionKey = 'your-secret-key'; // Replace this with a key of your choice
+    const encryptedContent = encryptText(content, encryptionKey);
+
     const db = mongoose.connection.db;
     const message = {
       conversationId,
-      content,
+      content: encryptedContent,  // Store encrypted content
       sender,
       timestamp: new Date(),
     };
@@ -226,7 +232,6 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
       console.log("Receiver socket ID not found");
     }
 
-    // Directly return the inserted message with string ID
     if (result.insertedId) {
       return res.status(201).json({ _id: result.insertedId.toString() });
     } else {
@@ -245,6 +250,8 @@ app.get("/conversations/getMessages/:id", async (req, res) => {
     const db = mongoose.connection.db;
     const conversationId = req.params.id;
 
+    const encryptionKey = 'your-secret-key'; // The same key used for encryption
+
     const messages = await db
       .collection("messages")
       .find({ conversationId: conversationId })
@@ -254,13 +261,14 @@ app.get("/conversations/getMessages/:id", async (req, res) => {
       return res.status(404).send("No messages found for this conversation");
     }
 
-    // Convert message IDs to strings
-    const messagesWithStringId = messages.map((message) => ({
+    // Convert message IDs to strings and decrypt the content
+    const messagesWithDecryptedContent = messages.map((message) => ({
       ...message,
       _id: message._id.toString(),
+      content: decryptText(message.content, encryptionKey),  // Decrypt content
     }));
 
-    res.json(messagesWithStringId);
+    res.json(messagesWithDecryptedContent);
   } catch (error) {
     res.status(500).send(error.message);
   }

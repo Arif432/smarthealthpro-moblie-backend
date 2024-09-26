@@ -513,6 +513,7 @@ const updatePassword = async (req, res) => {
 };
 
 const updateProfilePic = async (req, res) => {
+  console.log("Sdsdsd")
   try {
     console.log("User ID and File:", req.body.id, req.file); // For debugging
 
