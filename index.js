@@ -213,13 +213,13 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
       return res.status(400).json({ error: "Content and sender are required" });
     }
 
-    const encryptionKey = 'your-secret-key'; // Replace this with a key of your choice
-    const encryptedContent = encryptText(content, encryptionKey);
+    // const encryptionKey = 'your-secret-key'; // Replace this with a key of your choice
+    // const encryptedContent = encryptText(content, encryptionKey);
 
     const db = mongoose.connection.db;
     const message = {
       conversationId,
-      content: encryptedContent,  // Store encrypted content
+      content: content,  // Store encrypted content
       sender,
       timestamp: new Date(),
     };
@@ -271,7 +271,8 @@ app.get("/conversations/getMessages/:id", async (req, res) => {
     const messagesWithDecryptedContent = messages.map((message) => ({
       ...message,
       _id: message._id.toString(),
-      content: decryptText(message.content, encryptionKey),  // Decrypt content
+      // content: decryptText(message.content, encryptionKey),  // Decrypt content
+      content: message.content
     }));
 
     res.json(messagesWithDecryptedContent);
