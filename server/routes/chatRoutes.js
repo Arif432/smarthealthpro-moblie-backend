@@ -113,21 +113,16 @@ router.delete("/:chatId", async (req, res) => {
 
   console.log("Received request to delete chat with ID:", chatId);
   try {
+    // Check if chatId is provided
     if (!chatId) {
       return res.status(400).json({ message: "Chat ID is required" });
     }
 
+    // Delete messages associated with this chatId
+    const conversationResult = await Conversation.deleteMany({ _id: chatId });
     const messagesResult = await Message.deleteMany({ conversationId: chatId });
-    console.log("Messages deleted:", messagesResult.deletedCount);
-
-    const conversation = await Conversation.findById(chatId);
-    console.log("conver",conversation)
-    if (!conversation) {
-    return res.status(404).json({ message: "Conversation not found" });
-    }
-
-    const conversationResult = await Conversation.deleteOne({ _id: chatId });
     console.log("Conversation deleted:", conversationResult.deletedCount);
+    console.log("Messages deleted:", messagesResult.deletedCount);
 
     res.status(200).json({ message: "Chat and associated data deleted successfully" });
   } catch (error) {
