@@ -11,8 +11,6 @@ const chatRoutes = require("./server/routes/chatRoutes");
 const { ObjectId } = require("mongodb");
 const { Conversation } = require("./server/models/ChatMessageModal");
 const { CLOUDNARY, KEY, SECRET } = require('./cloud');
-const  encryptText = require("./middle/encryptText")
-const decryptText = require("./middle/encryptText")
 
 require("dotenv").config();
 
@@ -203,6 +201,7 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
 
   try {
     const { content, sender, receiverId } = req.body;
+    console.log("content",content)
     const conversationId = req.params.conversationId;
 
     console.log("Request body:", { content, sender, receiverId });

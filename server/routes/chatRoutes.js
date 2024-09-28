@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
 const chats = require("../models/ChatMessageModal");
-
+const { Chat, Message, Conversation } = require("../models/ChatMessageModal");
 // Fetch all chats
 router.get("/chats", async (req, res) => {
   try {
@@ -107,5 +107,34 @@ router.get("/messages/:chatId", async (req, res) => {
     res.status(500).json({ message: "Error fetching chat for chatId", error });
   }
 });
+
+router.delete("/:chatId", async (req, res) => {
+  const { chatId } = req.params;
+
+  console.log("Received request to delete chat with ID:", chatId);
+  try {
+    if (!chatId) {
+      return res.status(400).json({ message: "Chat ID is required" });
+    }
+
+    const messagesResult = await Message.deleteMany({ conversationId: chatId });
+    console.log("Messages deleted:", messagesResult.deletedCount);
+
+    const conversation = await Conversation.findById(chatId);
+    console.log("conver",conversation)
+    if (!conversation) {
+    return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    const conversationResult = await Conversation.deleteOne({ _id: chatId });
+    console.log("Conversation deleted:", conversationResult.deletedCount);
+
+    res.status(200).json({ message: "Chat and associated data deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting chat:", error);
+    res.status(500).json({ message: "Error deleting chat", error });
+  }
+});
+
 
 module.exports = router;
