@@ -21,6 +21,7 @@ const {
   getAllPatients,
 } = require("../controllers/RegisterController");
 const { singlePic } = require("../../middle/multer");
+
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.get("/logout", (req, res) => {

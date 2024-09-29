@@ -1,5 +1,6 @@
 const cloudinary = require("cloudinary");
 const express = require("express");
+const router = express.Router();
 const mongoose = require("mongoose");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
@@ -9,13 +10,14 @@ const userRoutes = require("./server/routes/userRoutes");
 const appointmentRoutes = require("./server/routes/AppointmentRoute");
 const chatRoutes = require("./server/routes/chatRoutes");
 const { ObjectId } = require("mongodb");
-const { Conversation } = require("./server/models/ChatMessageModal");
+const { Conversation,Message } = require("./server/models/ChatMessageModal");
 const { CLOUDNARY, KEY, SECRET } = require('./cloud');
 
 require("dotenv").config();
 
 const serviceAccount = require("./secrets/serviceAccountKey.json");
 const { User } = require("./server/models/UserModal");
+const { Console } = require("console");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -50,6 +52,7 @@ mongoose
 app.use("/user", userRoutes);
 app.use("/appointment", appointmentRoutes);
 app.use("/chats", chatRoutes);
+app.use("/", router)
 
 // Create HTTP server for Express and Socket.IO
 const http = require("http").createServer(app);
@@ -58,6 +61,7 @@ const http = require("http").createServer(app);
 const io = require("socket.io")(http);
 
 const userSocketMap = {};
+
 
 io.on("connection", (socket) => {
   console.log("A user is connected", socket.id);
@@ -422,3 +426,4 @@ app.post("/send-notification", async (req, res) => {
   await sendNotificationToUser(userId, title, body);
   res.json({ message: "Notification sent" });
 });
+

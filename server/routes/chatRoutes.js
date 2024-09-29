@@ -108,26 +108,96 @@ router.get("/messages/:chatId", async (req, res) => {
   }
 });
 
-router.delete("/:chatId", async (req, res) => {
+router.delete("/deleteChat/:chatId", async (req, res) => {
   const { chatId } = req.params;
-
   console.log("Received request to delete chat with ID:", chatId);
+  
   try {
-    // Check if chatId is provided
     if (!chatId) {
       return res.status(400).json({ message: "Chat ID is required" });
     }
 
-    // Delete messages associated with this chatId
-    const conversationResult = await Conversation.deleteMany({ _id: chatId });
-    const messagesResult = await Message.deleteMany({ conversationId: chatId });
-    console.log("Conversation deleted:", conversationResult.deletedCount);
+    // Convert string ID to ObjectId
+    let objectId;
+    try {
+      objectId = new mongoose.Types.ObjectId(chatId);
+    } catch (error) {
+      console.error("Invalid ObjectId:", error);
+      return res.status(400).json({ message: "Invalid chat ID format" });
+    }
+
+    // Log all conversations in the database
+    const allConversations = await Conversation.find({}).lean();
+    console.log("All conversations in database:", 
+      allConversations.map(c => ({
+        _id: c._id.toString(),
+        participants: c.participants,
+        lastMessage: c.lastMessage
+      }))
+    );
+
+    // Log type of chatId for debugging
+    console.log("Type of chatId:", typeof chatId);
+
+    // Attempt to find the conversation using different methods
+    const conversationByObjectId = await Conversation.findOne({ _id: objectId }).lean();
+    console.log("Conversation found by ObjectId:", conversationByObjectId);
+
+    const conversationByStringId = await Conversation.findOne({ _id: chatId }).lean();
+    console.log("Conversation found by string ID:", conversationByStringId);
+
+    const conversationByCustomQuery = await Conversation.findOne({ 
+      $or: [
+        { _id: objectId },
+        { _id: chatId },
+        { 'participants': { $in: [objectId, chatId] } }
+      ]
+    }).lean();
+    console.log("Conversation found by custom query:", conversationByCustomQuery);
+
+    // Check if the conversation exists in allConversations
+    const conversationInList = allConversations.find(c => c._id.toString() === chatId);
+    console.log("Conversation found in list:", conversationInList);
+
+    if (!conversationByObjectId && !conversationByStringId && !conversationByCustomQuery) {
+      if (conversationInList) {
+        console.log("Conversation exists in list but can't be retrieved individually. Possible data inconsistency.");
+        
+        // Attempt to force delete using string ID
+        const forceDeleteResult = await Conversation.deleteOne({ _id: chatId });
+        console.log("Force delete by string ID result:", forceDeleteResult);
+
+        if (forceDeleteResult.deletedCount > 0) {
+          return res.status(200).json({ message: "Conversation force deleted by string ID due to data inconsistency" });
+        }
+
+        return res.status(404).json({ message: "Conversation found in list but deletion failed" });
+      }
+      return res.status(404).json({ message: "Conversation not found in the database" });
+    }
+
+    const conversationToDelete = conversationByObjectId || conversationByStringId || conversationByCustomQuery;
+
+    // Delete messages
+    const messagesResult = await Message.deleteMany({ conversationId: objectId });
     console.log("Messages deleted:", messagesResult.deletedCount);
 
-    res.status(200).json({ message: "Chat and associated data deleted successfully" });
+    // Delete conversation
+    const deletionResult = await Conversation.findByIdAndDelete(objectId);
+    console.log("Conversation deletion result:", deletionResult);
+
+    if (!deletionResult) {
+      return res.status(500).json({ message: "Failed to delete conversation" });
+    }
+
+    res.status(200).json({ 
+      message: "Chat and associated data deleted successfully",
+      messagesDeleted: messagesResult.deletedCount,
+      conversationDeleted: deletionResult
+    });
   } catch (error) {
-    console.error("Error deleting chat:", error);
-    res.status(500).json({ message: "Error deleting chat", error });
+    console.error("Error in delete chat route:", error);
+    res.status(500).json({ message: "Error deleting chat", error: error.message });
   }
 });
 

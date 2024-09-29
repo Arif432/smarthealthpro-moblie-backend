@@ -3,9 +3,11 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { User, Doctor, Patient } = require("../models/UserModal");
 const { getURI } = require("../../utils/features");
-// const { sendMail } = require('../utils/nodemailerConfig');
+const { sendMail } = require('../../utils/nodemailerConfig');
 const { ObjectId } = mongoose.Types;
 const cloudinary = require("cloudinary")
+
+const JWT_SECRET = "your-hardcoded-secret-key";
 
 const registerUser = async (req, res) => {
   const {
@@ -113,113 +115,6 @@ const registerUser = async (req, res) => {
   }
 };
 
-
-const loginUser = async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (user) {
-      const isPasswordCorrect = await bcrypt.compare(password, user.password);
-      if (isPasswordCorrect) {
-        const token = jwt.sign(
-          { _id: user._id, role: user.role },
-          "sF4oD3s8qjv%&@Fg2S!L5iYp9s@&A5vG",
-          { expiresIn: 3600 }
-        );
-        res.cookie("token", token);
-        res.json({
-          id: user._id,
-          role: user.role,
-          token,
-          userName: user.userName,
-          email: user.email,
-          avatar: user.avatar,
-        });
-      } else {
-        res.status(401).json({ error: "Invalid password." });
-      }
-    } else {
-      res.status(404).json({ error: "User not found." });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Error finding user." });
-  }
-};
-
-const verifyUser = (req, res, next) => {
-  const token = req.headers["authorization"]?.split(" ")[1]; // Expect token to be in format "Bearer <token>"
-  if (!token) {
-    return res.status(401).json({ msg: "Authorization token missing" });
-  }
-  try {
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-      if (err) {
-        return res.status(401).json({ msg: "Invalid token" });
-      } else {
-        req.user = {
-          _id: decoded._id,
-          role: decoded.role,
-        };
-        next();
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Error verifying user." });
-  }
-};
-
-const forgotPassword = async (req, res) => {
-  const { email } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
-    const link = `http://localhost:5000/user/reset-password/${user._id}/${token}`;
-    // sendMail(
-    //   email,
-    //   'Reset Password',
-    //   'Reset Password',
-    //   `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
-    // );
-    res.status(200).json({ msg: "Password reset link sent to email", link });
-  } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-const resetPassword = async (req, res) => {
-  const { userId, token } = req.params;
-  const { password } = req.body;
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (decoded._id !== userId) {
-      return res.status(400).json({ error: "Invalid token" });
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await User.findByIdAndUpdate(userId, { password: hashedPassword });
-    res.status(200).json({ msg: "Password updated successfully" });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-};
-
-const getUserInfo = async (req, res) => {
-  const { id } = req.params;
-  try {
-    const user = await User.findById(id).select("-password"); // Exclude the password from the response
-    if (!user) {
-      return res.status(404).json({ error: "User not found." });
-    }
-    res.status(200).json({ user });
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching user information." });
-  }
-};
-
 const createDoctor = async (req, res) => {
   try {
     const {
@@ -277,6 +172,114 @@ const createPatient = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
+const loginUser = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (user) {
+      const isPasswordCorrect = await bcrypt.compare(password, user.password);
+      if (isPasswordCorrect) {
+        const token = jwt.sign(
+          { _id: user._id, role: user.role },
+          "sF4oD3s8qjv%&@Fg2S!L5iYp9s@&A5vG",
+          { expiresIn: 3600 }
+        );
+        res.cookie("token", token);
+        res.json({
+          id: user._id,
+          role: user.role,
+          token,
+          userName: user.userName,
+          email: user.email,
+          avatar: user.avatar,
+        });
+      } else {
+        res.status(401).json({ error: "Invalid password." });
+      }
+    } else {
+      res.status(404).json({ error: "User not found." });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Error finding user." });
+  }
+};
+
+const verifyUser = (req, res, next) => {
+  const token = req.headers["authorization"]?.split(" ")[1]; // Expect token to be in format "Bearer <token>"
+  if (!token) {
+    return res.status(401).json({ msg: "Authorization token missing" });
+  }
+  try {
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ msg: "Invalid token" });
+      } else {
+        req.user = {
+          _id: decoded._id,
+          role: decoded.role,
+        };
+        next();
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Error verifying user." });
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const token = jwt.sign({ _id: user._id }, JWT_SECRET, {
+      expiresIn: "1h",
+    });
+    const link = `http://localhost:5000/user/reset-password/${user._id}/${token}`;
+    sendMail(
+      email,
+      'Reset Password',
+      'Reset Password',
+      `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
+    );
+    res.status(200).json({ msg: "Password reset link sent to email", link });
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  const { userId, token } = req.params;
+  const { password } = req.body;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded._id !== userId) {
+      return res.status(400).json({ error: "Invalid token" });
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await User.findByIdAndUpdate(userId, { password: hashedPassword });
+    res.status(200).json({ msg: "Password updated successfully" });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const getUserInfo = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = await User.findById(id).select("-password"); // Exclude the password from the response
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+    res.status(200).json({ user });
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching user information." });
+  }
+};
+
 
 const updateUser = async (req, res) => {
   const { id } = req.params;
