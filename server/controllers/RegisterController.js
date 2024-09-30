@@ -2,12 +2,11 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { User, Doctor, Patient } = require("../models/UserModal");
+const Appointment = require("../models/AppointmentModal");
 const { getURI } = require("../../utils/features");
-const { sendMail } = require('../../utils/nodemailerConfig');
+// const { sendMail } = require("../../utils/nodemailerConfig");
 const { ObjectId } = mongoose.Types;
-const cloudinary = require("cloudinary")
-
-const JWT_SECRET = "your-hardcoded-secret-key";
+const cloudinary = require("cloudinary");
 
 const registerUser = async (req, res) => {
   const {
@@ -32,7 +31,9 @@ const registerUser = async (req, res) => {
   try {
     // Check for required fields only for patients
     if (role === "patient" && (!dateOfBirth || !bloodType)) {
-      return res.status(400).json({ message: "Missing required fields for patient" });
+      return res
+        .status(400)
+        .json({ message: "Missing required fields for patient" });
     }
 
     // Generate a base username from the name
@@ -115,6 +116,112 @@ const registerUser = async (req, res) => {
   }
 };
 
+const loginUser = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (user) {
+      const isPasswordCorrect = await bcrypt.compare(password, user.password);
+      if (isPasswordCorrect) {
+        const token = jwt.sign(
+          { _id: user._id, role: user.role },
+          "sF4oD3s8qjv%&@Fg2S!L5iYp9s@&A5vG",
+          { expiresIn: 3600 }
+        );
+        res.cookie("token", token);
+        res.json({
+          id: user._id,
+          role: user.role,
+          token,
+          userName: user.userName,
+          email: user.email,
+          avatar: user.avatar,
+        });
+      } else {
+        res.status(401).json({ error: "Invalid password." });
+      }
+    } else {
+      res.status(404).json({ error: "User not found." });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Error finding user." });
+  }
+};
+
+const verifyUser = (req, res, next) => {
+  const token = req.headers["authorization"]?.split(" ")[1]; // Expect token to be in format "Bearer <token>"
+  if (!token) {
+    return res.status(401).json({ msg: "Authorization token missing" });
+  }
+  try {
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ msg: "Invalid token" });
+      } else {
+        req.user = {
+          _id: decoded._id,
+          role: decoded.role,
+        };
+        next();
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Error verifying user." });
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+    const link = `http://localhost:5000/user/reset-password/${user._id}/${token}`;
+    // sendMail(
+    //   email,
+    //   'Reset Password',
+    //   'Reset Password',
+    //   `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
+    // );
+    res.status(200).json({ msg: "Password reset link sent to email", link });
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  const { userId, token } = req.params;
+  const { password } = req.body;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded._id !== userId) {
+      return res.status(400).json({ error: "Invalid token" });
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await User.findByIdAndUpdate(userId, { password: hashedPassword });
+    res.status(200).json({ msg: "Password updated successfully" });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const getUserInfo = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = await User.findById(id).select("-password"); // Exclude the password from the response
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+    res.status(200).json({ user });
+  } catch (error) {
+    res.status(500).json({ error: "Error fetching user information." });
+  }
+};
+
 const createDoctor = async (req, res) => {
   try {
     const {
@@ -172,114 +279,6 @@ const createPatient = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
-
-const loginUser = async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (user) {
-      const isPasswordCorrect = await bcrypt.compare(password, user.password);
-      if (isPasswordCorrect) {
-        const token = jwt.sign(
-          { _id: user._id, role: user.role },
-          "sF4oD3s8qjv%&@Fg2S!L5iYp9s@&A5vG",
-          { expiresIn: 3600 }
-        );
-        res.cookie("token", token);
-        res.json({
-          id: user._id,
-          role: user.role,
-          token,
-          userName: user.userName,
-          email: user.email,
-          avatar: user.avatar,
-        });
-      } else {
-        res.status(401).json({ error: "Invalid password." });
-      }
-    } else {
-      res.status(404).json({ error: "User not found." });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "Error finding user." });
-  }
-};
-
-const verifyUser = (req, res, next) => {
-  const token = req.headers["authorization"]?.split(" ")[1]; // Expect token to be in format "Bearer <token>"
-  if (!token) {
-    return res.status(401).json({ msg: "Authorization token missing" });
-  }
-  try {
-    jwt.verify(token, JWT_SECRET, (err, decoded) => {
-      if (err) {
-        return res.status(401).json({ msg: "Invalid token" });
-      } else {
-        req.user = {
-          _id: decoded._id,
-          role: decoded.role,
-        };
-        next();
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Error verifying user." });
-  }
-};
-
-const forgotPassword = async (req, res) => {
-  const { email } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    const token = jwt.sign({ _id: user._id }, JWT_SECRET, {
-      expiresIn: "1h",
-    });
-    const link = `http://localhost:5000/user/reset-password/${user._id}/${token}`;
-    sendMail(
-      email,
-      'Reset Password',
-      'Reset Password',
-      `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
-    );
-    res.status(200).json({ msg: "Password reset link sent to email", link });
-  } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-const resetPassword = async (req, res) => {
-  const { userId, token } = req.params;
-  const { password } = req.body;
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded._id !== userId) {
-      return res.status(400).json({ error: "Invalid token" });
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await User.findByIdAndUpdate(userId, { password: hashedPassword });
-    res.status(200).json({ msg: "Password updated successfully" });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-};
-
-const getUserInfo = async (req, res) => {
-  const { id } = req.params;
-  try {
-    const user = await User.findById(id).select("-password"); // Exclude the password from the response
-    if (!user) {
-      return res.status(404).json({ error: "User not found." });
-    }
-    res.status(200).json({ user });
-  } catch (error) {
-    res.status(500).json({ error: "Error fetching user information." });
-  }
-};
-
 
 const updateUser = async (req, res) => {
   const { id } = req.params;
@@ -409,12 +408,14 @@ const getDoctorById = async (req, res) => {
 };
 
 const calculateSatisfactionRatio = (doctor) => {
-  if (typeof doctor.rating !== 'number' || typeof doctor.reviewCount !== 'number') {
+  if (
+    typeof doctor.rating !== "number" ||
+    typeof doctor.reviewCount !== "number"
+  ) {
     return null;
   }
   return (doctor.rating * Math.log(doctor.reviewCount + 1)) / 5;
 };
-
 
 // Suggested fix for the getDoctorsBySatisfaction function
 const getDoctorsBySatisfaction = async (req, res) => {
@@ -422,22 +423,22 @@ const getDoctorsBySatisfaction = async (req, res) => {
     const doctors = await Doctor.find({}).populate("user");
 
     const doctorsWithUser = doctors
-      .filter(doctor => doctor.user)
+      .filter((doctor) => doctor.user)
       .map((doctor) => {
         const userObj = doctor.user.toObject();
         const doctorObj = doctor.toObject();
-        
+
         const satisfactionRatio = calculateSatisfactionRatio(doctorObj);
 
         return {
           ...doctorObj,
           user: userObj,
-          satisfactionRatio
+          satisfactionRatio,
         };
       });
 
-    const sortedDoctors = doctorsWithUser.sort((a, b) => 
-      (b.satisfactionRatio || 0) - (a.satisfactionRatio || 0)
+    const sortedDoctors = doctorsWithUser.sort(
+      (a, b) => (b.satisfactionRatio || 0) - (a.satisfactionRatio || 0)
     );
 
     res.status(200).json(sortedDoctors);
@@ -516,7 +517,7 @@ const updatePassword = async (req, res) => {
 };
 
 const updateProfilePic = async (req, res) => {
-  console.log("Sdsdsd")
+  console.log("Sdsdsd");
   try {
     console.log("User ID and File:", req.body.id, req.file); // For debugging
 
@@ -549,7 +550,7 @@ const updateProfilePic = async (req, res) => {
 
     // Upload the new avatar
     const uploadResult = await cloudinary.v2.uploader.upload(file.content);
-    
+
     // Update user's avatar information
     user.avatar = {
       public_id: uploadResult.public_id,
@@ -563,7 +564,6 @@ const updateProfilePic = async (req, res) => {
       success: true,
       message: "Profile picture updated successfully",
     });
-    
   } catch (error) {
     console.error("Error updating profile picture:", error);
     res.status(500).send({
@@ -577,7 +577,7 @@ const getAllPatients = async (req, res) => {
     const patients = await Patient.find({}).populate("user");
 
     const patientsWithUser = patients
-      .filter(patient => patient.user)
+      .filter((patient) => patient.user)
       .map((patient) => {
         const userObj = patient.user.toObject();
         const doctorObj = patient.toObject();
@@ -594,7 +594,110 @@ const getAllPatients = async (req, res) => {
   }
 };
 
+const getAppointmentById = async (appointmentId) => {
+  try {
+    const db = mongoose.connection.db;
+    const appointments = db.collection("appointments");
 
+    console.log("Received appointment ID:", appointmentId);
+
+    // Try to find the appointment using both ObjectId and string ID
+    let appointment;
+    try {
+      appointment = await appointments.findOne({
+        _id: new ObjectId(appointmentId),
+      });
+      console.log("Query result using ObjectId:", appointment);
+    } catch (error) {
+      console.log("Error with ObjectId, trying string ID");
+      appointment = await appointments.findOne({ _id: appointmentId });
+      console.log("Query result using string ID:", appointment);
+    }
+
+    if (!appointment) {
+      console.log("Appointment not found, trying flexible search");
+
+      // Flexible search query
+      const flexibleQuery = {
+        $or: [
+          { _id: appointmentId },
+          { "doctor.id": appointmentId },
+          { "doctor.name": { $regex: appointmentId, $options: "i" } },
+          { "patient.id": appointmentId },
+          { "patient.name": { $regex: appointmentId, $options: "i" } },
+          { appointmentStatus: { $regex: appointmentId, $options: "i" } },
+          { description: { $regex: appointmentId, $options: "i" } },
+          { location: { $regex: appointmentId, $options: "i" } },
+        ],
+      };
+
+      appointment = await appointments.findOne(flexibleQuery);
+      console.log("Flexible query result:", appointment);
+    }
+
+    if (!appointment) {
+      console.log("Appointment not found in database");
+
+      // Log all document IDs in the collection
+      const allIds = await appointments
+        .find({}, { projection: { _id: 1 } })
+        .toArray();
+      console.log(
+        "All document IDs in collection:",
+        allIds.map((doc) => doc._id.toString())
+      );
+
+      return res.status(404).json({ message: "Appointment not found" });
+    }
+
+    console.log("Found appointment:", appointment);
+    return appointment;
+  } catch (error) {
+    console.error("Error fetching appointment:", error);
+  }
+};
+
+const addNotes = async (req, res) => {
+  const { note, appointmentId } = req.body;
+
+  try {
+    // Validate input
+    if (!note || !appointmentId) {
+      return res
+        .status(400)
+        .json({ error: "note, and appointment ID are required" });
+    }
+
+    // Try to find the appointment using both ObjectId and string ID
+    let appointment;
+    appointment = await getAppointmentById(appointmentId);
+    console.log("appointment: ", appointment);
+    const patientUserId = appointment.patient.id;
+    console.log("patient id: ", patientUserId);
+    console.log("appointment._id: ", appointment._id);
+
+    // Find the user (patient) and update their notes
+    const updatedUser = await User.findByIdAndUpdate(patientUserId, {
+      notes: [
+        {
+          doctorId: appointment.doctor.id,
+          note,
+        },
+      ],
+    });
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User (patient) not found" });
+    }
+
+    res
+      .status(201)
+      .json({ message: "Note added successfully", user: updatedUser });
+  } catch (error) {
+    console.error("Error adding note:", error);
+    res.status(500).json({ error: "An error occurred while adding the note" });
+  }
+};
 
 module.exports = {
   updateProfilePic,
@@ -614,4 +717,5 @@ module.exports = {
   deleteUser,
   updatePassword,
   getAllPatients,
+  addNotes,
 };
