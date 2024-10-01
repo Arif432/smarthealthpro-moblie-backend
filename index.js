@@ -10,8 +10,11 @@ const userRoutes = require("./server/routes/userRoutes");
 const appointmentRoutes = require("./server/routes/AppointmentRoute");
 const chatRoutes = require("./server/routes/chatRoutes");
 const { ObjectId } = require("mongodb");
-const { Conversation,Message } = require("./server/models/ChatMessageModal");
-const { CLOUDNARY, KEY, SECRET } = require('./cloud');
+const { Conversation, Message } = require("./server/models/ChatMessageModal");
+const { CLOUDNARY, KEY, SECRET } = require("./cloud");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 require("dotenv").config();
 
@@ -52,7 +55,7 @@ mongoose
 app.use("/user", userRoutes);
 app.use("/appointment", appointmentRoutes);
 app.use("/chats", chatRoutes);
-app.use("/", router)
+app.use("/", router);
 
 // Create HTTP server for Express and Socket.IO
 const http = require("http").createServer(app);
@@ -61,7 +64,6 @@ const http = require("http").createServer(app);
 const io = require("socket.io")(http);
 
 const userSocketMap = {};
-
 
 io.on("connection", (socket) => {
   console.log("A user is connected", socket.id);
@@ -205,7 +207,7 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
 
   try {
     const { content, sender, receiverId } = req.body;
-    console.log("content",content)
+    console.log("content", content);
     const conversationId = req.params.conversationId;
 
     console.log("Request body:", { content, sender, receiverId });
@@ -222,7 +224,7 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
     const db = mongoose.connection.db;
     const message = {
       conversationId,
-      content: content,  // Store encrypted content
+      content: content, // Store encrypted content
       sender,
       timestamp: new Date(),
     };
@@ -259,7 +261,7 @@ app.get("/conversations/getMessages/:id", async (req, res) => {
     const db = mongoose.connection.db;
     const conversationId = req.params.id;
 
-    const encryptionKey = 'your-secret-key'; // The same key used for encryption
+    const encryptionKey = "your-secret-key"; // The same key used for encryption
 
     const messages = await db
       .collection("messages")
@@ -275,7 +277,7 @@ app.get("/conversations/getMessages/:id", async (req, res) => {
       ...message,
       _id: message._id.toString(),
       // content: decryptText(message.content, encryptionKey),  // Decrypt content
-      content: message.content
+      content: message.content,
     }));
 
     res.json(messagesWithDecryptedContent);
@@ -427,3 +429,74 @@ app.post("/send-notification", async (req, res) => {
   res.json({ message: "Notification sent" });
 });
 
+// Configure multer for local storage
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, "uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir);
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+
+const upload = multer({ storage: storage });
+
+// File upload route
+router.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).send("No file uploaded.");
+  }
+
+  const fileInfo = {
+    filename: req.file.filename,
+    originalName: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.size,
+    url: `http://192.168.18.124:5000/file/${req.file.filename}`, // Adjust this URL to match your server's address
+  };
+
+  res.status(200).json({
+    message: "File uploaded successfully",
+    file: fileInfo,
+  });
+});
+
+// Serve files
+router.get("/file/:filename", (req, res) => {
+  const filePath = path.join(__dirname, "uploads", req.params.filename);
+  res.sendFile(filePath);
+});
+
+// Add this route to your existing chat-related routes
+router.post("/conversations/:conversationId/messages", async (req, res) => {
+  try {
+    const { content, sender, fileInfo } = req.body;
+    const conversationId = req.params.conversationId;
+
+    const newMessage = {
+      conversationId,
+      content: fileInfo ? "File shared" : content,
+      sender,
+      timestamp: new Date(),
+      fileInfo: fileInfo || null,
+    };
+
+    const db = mongoose.connection.db;
+    const result = await db.collection("messages").insertOne(newMessage);
+
+    if (result.insertedId) {
+      res
+        .status(201)
+        .json({ _id: result.insertedId.toString(), ...newMessage });
+    } else {
+      res.status(500).json({ error: "Failed to insert message" });
+    }
+  } catch (error) {
+    console.error("Error sending message:", error);
+    res.status(500).json({ error: "Error sending message" });
+  }
+});
