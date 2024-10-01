@@ -16,6 +16,15 @@ const userDeviceSchema = new mongoose.Schema({
   },
 });
 
+const notesSchema = new mongoose.Schema({
+  doctorId: {
+    type: String,
+  },
+  note: {
+    type: String,
+  },
+});
+
 // Common User Schema
 const UserSchema = new mongoose.Schema({
   userName: {
@@ -49,6 +58,7 @@ const UserSchema = new mongoose.Schema({
     },
   },
   devices: [userDeviceSchema],
+  notes: [notesSchema],
 });
 
 // Doctor Schema
