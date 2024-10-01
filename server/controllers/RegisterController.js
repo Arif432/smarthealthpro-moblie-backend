@@ -6,6 +6,9 @@ const { getURI } = require("../../utils/features");
 const { sendMail } = require('../../utils/nodemailerConfig');
 const { ObjectId } = mongoose.Types;
 const cloudinary = require("cloudinary")
+const {Message,Conversation} = require("../models/ChatMessageModal")
+const Appointment =  require('../models/AppointmentModal');
+const Summary = require("../models/Summary");
 
 const JWT_SECRET = "your-hardcoded-secret-key";
 
@@ -466,10 +469,30 @@ const deleteUser = async (req, res) => {
 
     if (user.role === "doctor") {
       await Doctor.findOneAndDelete({ user: id });
+      // await Appointment.deleteMany({
+      //   "doctor.id": { $in: [mongoose.Types.ObjectId(id), id] },
+      // });
     } else if (user.role === "patient") {
       await Patient.findOneAndDelete({ user: id });
+
+      // await Summary.deleteMany({
+      //   patientID: { $in: [mongoose.Types.ObjectId(id), id] },
+      // });
+      // await Appointment.deleteMany({
+      //   "patient.id": { $in: [mongoose.Types.ObjectId(id), id] },
+      // });
     }
 
+    // await Message.deleteMany({
+    //   sender: { 
+    //     $in: [mongoose.Types.ObjectId(id), id]  // Handles both ObjectId and string formats
+    //   }
+    // });
+    // await Conversation.deleteMany({
+    //   participants: {
+    //     $in: [mongoose.Types.ObjectId(id), id],  // Handles both ObjectId and string formats
+    //   },
+    // });
     await User.findByIdAndDelete(id);
     res.status(200).json({ msg: "User deleted successfully" });
   } catch (error) {
@@ -477,7 +500,7 @@ const deleteUser = async (req, res) => {
   }
 };
 
-const updatePassword = async (req, res) => {
+updatePassword = async (req, res) => {
   const { userId, newPassword } = req.body;
 
   try {
