@@ -1,4 +1,3 @@
-const cloudinary = require("cloudinary");
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
@@ -15,6 +14,9 @@ const { CLOUDNARY, KEY, SECRET } = require("./cloud");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const crypto = require("crypto");
 
 require("dotenv").config();
 
@@ -25,7 +27,7 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-cloudinary.v2.config({
+cloudinary.config({
   cloud_name: CLOUDNARY,
   api_key: KEY,
   api_secret: SECRET,
@@ -97,6 +99,13 @@ io.on("connection", (socket) => {
 http.listen(PORT, () => {
   console.log(`Server and Socket.IO running on port ${PORT}`);
 });
+
+const IV_LENGTH = 16; // This is correct for AES
+const ENCRYPTION_KEY = crypto.scryptSync(
+  process.env.ENCRYPTION_KEY || "your-fallback-secret-key",
+  "salt",
+  32
+);
 
 // Create a new conversation
 app.post("/conversations", async (req, res) => {
@@ -201,67 +210,11 @@ app.get("/conversations/:userId", async (req, res) => {
   }
 });
 
-//add message to convo
-app.post("/conversations/:conversationId/messages", async (req, res) => {
-  console.log("Received request to send a message");
-
-  try {
-    const { content, sender, receiverId } = req.body;
-    console.log("content", content);
-    const conversationId = req.params.conversationId;
-
-    console.log("Request body:", { content, sender, receiverId });
-    console.log("Conversation ID:", conversationId);
-
-    if (!content || !sender) {
-      console.error("Missing content or sender in request body");
-      return res.status(400).json({ error: "Content and sender are required" });
-    }
-
-    // const encryptionKey = 'your-secret-key'; // Replace this with a key of your choice
-    // const encryptedContent = encryptText(content, encryptionKey);
-
-    const db = mongoose.connection.db;
-    const message = {
-      conversationId,
-      content: content, // Store encrypted content
-      sender,
-      timestamp: new Date(),
-    };
-
-    console.log("Message object:", message);
-
-    const result = await db.collection("messages").insertOne(message);
-    console.log("Database insert result:", result);
-
-    const receiverSocketId = userSocketMap[receiverId];
-
-    if (receiverSocketId) {
-      console.log("Emitting receiveMessage event to the receiver", receiverId);
-      io.to(receiverSocketId).emit("newMessage", message);
-    } else {
-      console.log("Receiver socket ID not found");
-    }
-
-    if (result.insertedId) {
-      return res.status(201).json({ _id: result.insertedId.toString() });
-    } else {
-      console.error("Message not inserted, unexpected result:", result);
-      return res.status(500).json({ error: "Failed to insert message" });
-    }
-  } catch (error) {
-    console.error("Error sending message:", error);
-    return res.status(500).json({ error: "Error sending message" });
-  }
-});
-
 //fetch messages by convo id
 app.get("/conversations/getMessages/:id", async (req, res) => {
   try {
     const db = mongoose.connection.db;
     const conversationId = req.params.id;
-
-    const encryptionKey = "your-secret-key"; // The same key used for encryption
 
     const messages = await db
       .collection("messages")
@@ -429,17 +382,12 @@ app.post("/send-notification", async (req, res) => {
   res.json({ message: "Notification sent" });
 });
 
-// Configure multer for local storage
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, "uploads");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir);
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname);
+// Configure Cloudinary storage
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "uploads",
+    allowed_formats: ["jpg", "png", "pdf", "doc", "docx", "xls", "xlsx"], // Add more formats as needed
   },
 });
 
@@ -455,31 +403,26 @@ router.post("/upload", upload.single("file"), (req, res) => {
     filename: req.file.filename,
     originalName: req.file.originalname,
     mimetype: req.file.mimetype,
-    size: req.file.size,
-    url: `http://192.168.18.124:5000/file/${req.file.filename}`, // Adjust this URL to match your server's address
+    size: req.file.bytes,
+    url: req.file.path, // Cloudinary URL
   };
 
   res.status(200).json({
-    message: "File uploaded successfully",
+    message: "File uploaded successfully to Cloudinary",
     file: fileInfo,
   });
 });
 
-// Serve files
-router.get("/file/:filename", (req, res) => {
-  const filePath = path.join(__dirname, "uploads", req.params.filename);
-  res.sendFile(filePath);
-});
-
 // Add this route to your existing chat-related routes
-router.post("/conversations/:conversationId/messages", async (req, res) => {
+app.post("/conversations/:conversationId/messages", async (req, res) => {
   try {
     const { content, sender, fileInfo } = req.body;
     const conversationId = req.params.conversationId;
 
+    console.log("file info from index.js: ", fileInfo);
     const newMessage = {
       conversationId,
-      content: fileInfo ? "File shared" : content,
+      content: content,
       sender,
       timestamp: new Date(),
       fileInfo: fileInfo || null,
@@ -489,9 +432,18 @@ router.post("/conversations/:conversationId/messages", async (req, res) => {
     const result = await db.collection("messages").insertOne(newMessage);
 
     if (result.insertedId) {
-      res
-        .status(201)
-        .json({ _id: result.insertedId.toString(), ...newMessage });
+      const insertedMessage = {
+        _id: result.insertedId.toString(),
+        ...newMessage,
+      };
+
+      // Emit the new message to connected clients
+      const receiverSocketId = userSocketMap[newMessage.sender];
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("newMessage", insertedMessage);
+      }
+
+      res.status(201).json(insertedMessage);
     } else {
       res.status(500).json({ error: "Failed to insert message" });
     }

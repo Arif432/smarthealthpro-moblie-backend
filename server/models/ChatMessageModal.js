@@ -61,6 +61,30 @@ const MessageSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   }, // Time when the message was sent
+  fileInfo: [
+    {
+      url: {
+        type: String,
+        required: true,
+      },
+      publicId: {
+        type: String,
+        required: true,
+      },
+      originalName: {
+        type: String,
+        required: true,
+      },
+      mimetype: {
+        type: String,
+        required: true,
+      },
+      size: {
+        type: String,
+        required: true,
+      },
+    },
+  ],
 });
 
 // Define the Conversation schema
