@@ -23,6 +23,8 @@ require("dotenv").config();
 const serviceAccount = require("./secrets/serviceAccountKey.json");
 const { User } = require("./server/models/UserModal");
 const { Console } = require("console");
+
+// Server Initialization (update this in your server code)
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -327,59 +329,195 @@ app.put("/conversations/:id/lastMessage", async (req, res) => {
   }
 });
 
-app.post("/update-fcm-token", async (req, res) => {
+router.post("/update-fcm-token", async (req, res) => {
   const { email, fcmToken, device } = req.body;
   if (!email || !fcmToken || !device) {
-    return res.status(400).json({ message: "Missing required fields" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
   }
   try {
+    const isValid = await validateToken(fcmToken);
+    if (!isValid) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid FCM token" });
+    }
+
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
-    // Check if the token already exists
-    const existingDevice = user.devices.find((d) => d.fcmToken === fcmToken);
-    if (!existingDevice) {
-      // Add new device if it doesn't exist
-      user.devices.push({ fcmToken, device });
-      await user.save();
+
+    const existingDeviceIndex = user.devices.findIndex(
+      (d) => d.device === device
+    );
+
+    if (existingDeviceIndex !== -1) {
+      user.devices[existingDeviceIndex].fcmToken = fcmToken;
+      user.devices[existingDeviceIndex].createdAt = new Date();
+    } else {
+      user.devices.push({ fcmToken, device, createdAt: new Date() });
     }
-    res.json({ message: "FCM token updated successfully" });
+
+    await user.save();
+    res.json({ success: true, message: "FCM token updated successfully" });
   } catch (error) {
     console.error("Error updating FCM token:", error);
-    res.status(500).json({ message: "Error updating FCM token" });
+    res.status(500).json({
+      success: false,
+      message: "Error updating FCM token",
+      error: error.message,
+    });
   }
 });
 
-// Function to send notification to a specific user
-async function sendNotificationToUser(email, title, body) {
+async function verifyFCMToken(token) {
   try {
-    const user = await User.findOne({ email });
-    if (!user || user.fcmTokens.length === 0) {
-      console.log("No FCM tokens found for user");
-      return;
-    }
-
     const message = {
-      notification: {
-        title,
-        body,
-      },
-      tokens: user.fcmTokens,
+      data: { test: "test" },
+      token: token,
     };
-
-    const response = await admin.messaging().sendMulticast(message);
-    console.log("Notification sent successfully:", response);
+    await admin.messaging().send(message, true); // dryRun = true
+    console.log("Token is valid");
+    return true;
   } catch (error) {
-    console.error("Error sending notification:", error);
+    console.error("Token is invalid:", error);
+    return false;
   }
 }
 
-// Example route to send a notification
-app.post("/send-notification", async (req, res) => {
-  const { userId, title, body } = req.body;
-  await sendNotificationToUser(userId, title, body);
-  res.json({ message: "Notification sent" });
+// Function to send notification to a specific user
+async function sendNotificationToUser(receiverId, title, body) {
+  try {
+    console.log(`Attempting to send notification to ${receiverId}`);
+    const user = await User.findById(receiverId);
+    if (!user || user.devices.length === 0) {
+      console.log(`No devices found for user ${receiverId}`);
+      return;
+    }
+
+    console.log(`Found ${user.devices.length} devices for user ${receiverId}`);
+    const tokens = user.devices.map((device) => device.fcmToken);
+
+    let successCount = 0;
+    let failureCount = 0;
+    const failedTokens = [];
+
+    for (const token of tokens) {
+      if (await validateToken(token)) {
+        console.log("Valid token is: ", token);
+        const message = {
+          notification: { title, body },
+          token: token,
+        };
+
+        console.log(`Sending message to FCM:`, message);
+        try {
+          const response = await admin.messaging().send(message);
+          console.log(`FCM Response for token ${token}:`, response);
+          successCount++;
+        } catch (error) {
+          console.error(
+            `Error sending notification for token ${token}:`,
+            error
+          );
+          failedTokens.push(token);
+          failureCount++;
+        }
+      } else {
+        console.log(`Removing invalid token: ${token}`);
+        failedTokens.push(token);
+        failureCount++;
+      }
+    }
+
+    console.log(
+      `Notifications sent. Success: ${successCount}, Failure: ${failureCount}`
+    );
+
+    if (failedTokens.length > 0) {
+      console.log(`Cleaning up invalid tokens...`);
+      user.devices = user.devices.filter(
+        (device) => !failedTokens.includes(device.fcmToken)
+      );
+      await user.save();
+      console.log(`Removed ${failedTokens.length} invalid token(s)`);
+    }
+
+    return { successCount, failureCount };
+  } catch (error) {
+    console.error("Error in sendNotificationToUser:", error);
+    throw error;
+  }
+}
+
+// Route to send a notification
+router.post("/send-notification", async (req, res) => {
+  const { receiverId, title, body } = req.body;
+  if (!receiverId || !title || !body) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
+  }
+  try {
+    const result = await sendNotificationToUser(receiverId, title, body);
+    res.json({
+      success: true,
+      message: "Notification process completed",
+      result: {
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+      },
+    });
+  } catch (error) {
+    console.error("Error in send-notification route:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error sending notification",
+      error: error.message,
+    });
+  }
+});
+
+app.post("/test-fcm", async (req, res) => {
+  const { token } = req.body;
+  if (!(await validateToken(token))) {
+    return res.status(400).json({ success: false, error: "Invalid FCM token" });
+  }
+  const message = {
+    notification: {
+      title: "Test Notification",
+      body: "This is a test notification",
+    },
+    token: token,
+  };
+
+  try {
+    const response = await admin.messaging().send(message);
+    res.json({ success: true, response });
+  } catch (error) {
+    console.error("Error sending test notification:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post("/cleanup-tokens", async (req, res) => {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  try {
+    const result = await User.updateMany(
+      {},
+      { $pull: { devices: { createdAt: { $lt: thirtyDaysAgo } } } }
+    );
+    res.json({
+      message: `Cleaned up old tokens. Modified ${result.nModified} users.`,
+    });
+  } catch (error) {
+    console.error("Error cleaning up tokens:", error);
+    res.status(500).json({ message: "Error cleaning up tokens" });
+  }
 });
 
 // Configure Cloudinary storage
@@ -452,3 +590,14 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
     res.status(500).json({ error: "Error sending message" });
   }
 });
+
+async function validateToken(token) {
+  try {
+    const message = { data: {}, token };
+    await admin.messaging().send(message, true); // dryRun = true
+    return true;
+  } catch (error) {
+    console.error("Invalid token:", error);
+    return false;
+  }
+}
