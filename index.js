@@ -601,3 +601,35 @@ async function validateToken(token) {
     return false;
   }
 }
+
+// Add this new route to your existing Express app
+
+app.get("/check-conversation/:userId1/:userId2", async (req, res) => {
+  try {
+    const { userId1, userId2 } = req.params;
+
+    // Ensure both IDs are valid ObjectIds
+    if (!ObjectId.isValid(userId1) || !ObjectId.isValid(userId2)) {
+      return res.status(400).json({ error: "Invalid user IDs" });
+    }
+
+    const db = mongoose.connection.db;
+    const collection = db.collection("conversations");
+
+    // Search for a conversation that includes both users
+    const conversation = await collection.findOne({
+      participants: { $all: [userId1, userId2] },
+    });
+
+    if (conversation) {
+      // Conversation exists, return its ID
+      res.json({ conversationId: conversation._id.toString() });
+    } else {
+      // No conversation found
+      res.json({ conversationId: null });
+    }
+  } catch (error) {
+    console.error("Error checking conversation:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
