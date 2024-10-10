@@ -12,7 +12,11 @@ const Summary = require("../models/Summary");
 
 const JWT_SECRET = "your-hardcoded-secret-key";
 
+
+
 const registerUser = async (req, res) => {
+  console.log("Request body:", req.body); // Log the incoming request body
+
   const {
     fullName,
     email,
@@ -35,9 +39,7 @@ const registerUser = async (req, res) => {
   try {
     // Check for required fields only for patients
     if (role === "patient" && (!dateOfBirth || !bloodType)) {
-      return res
-        .status(400)
-        .json({ message: "Missing required fields for patient" });
+      return res.status(400).json({ message: "Missing required fields for patient" });
     }
 
     // Generate a base username from the name
@@ -59,9 +61,7 @@ const registerUser = async (req, res) => {
 
     // Check password length
     if (password.length < 8) {
-      return res
-        .status(400)
-        .json({ error: "Password should be at least 8 characters" });
+      return res.status(400).json({ error: "Password should be at least 8 characters" });
     }
 
     // Hash the password
@@ -76,6 +76,8 @@ const registerUser = async (req, res) => {
       role,
     });
 
+    console.log("User role:", role); // Log the user role
+
     // Create the patient record if role is 'patient'
     let newRecord = null;
     if (role === "patient") {
@@ -88,22 +90,27 @@ const registerUser = async (req, res) => {
 
     // Create the doctor record if role is 'doctor'
     if (role === "doctor") {
-      newRecord = await Doctor.create({
-        user: user._id, // Link the doctor record to the user's ID
-        userName: uniqueUserName,
-        fullName,
-        email,
-        specialization,
-        cnic,
-        address,
-        rating,
-        reviewCount,
-        numPatients,
-        about,
-        officeHours,
-        education,
-        avatar,
-      });
+      try {
+        newRecord = await Doctor.create({
+          user: user._id, // Link the doctor record to the user's ID
+          userName: uniqueUserName,
+          fullName,
+          email,
+          specialization,
+          cnic,
+          address,
+          rating,
+          reviewCount,
+          numPatients,
+          about,
+          officeHours,
+          education,
+          avatar,
+        });
+      } catch (error) {
+        console.error("Error creating doctor record:", error); // Log error details
+        return res.status(500).json({ error: "Failed to create doctor record." });
+      }
     }
 
     // Send a single response after both user and record are created
@@ -113,12 +120,15 @@ const registerUser = async (req, res) => {
       record: newRecord ? newRecord._id : null,
     });
   } catch (error) {
+    // Handle specific database errors
     if (error.code === 11000) {
       return res.status(400).json({ error: "Email already exists" });
     }
+    // Handle other server errors
     res.status(500).json({ error: error.message });
   }
 };
+
 
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
