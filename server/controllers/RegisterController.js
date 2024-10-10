@@ -158,7 +158,7 @@ const verifyUser = (req, res, next) => {
     return res.status(401).json({ msg: "Authorization token missing" });
   }
   try {
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
       if (err) {
         return res.status(401).json({ msg: "Invalid token" });
       } else {
@@ -181,16 +181,16 @@ const forgotPassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
+    const token = jwt.sign({ _id: user._id }, JWT_SECRET, {
       expiresIn: "1h",
     });
-    const link = `http://localhost:5000/user/reset-password/${user._id}/${token}`;
-    // sendMail(
-    //   email,
-    //   'Reset Password',
-    //   'Reset Password',
-    //   `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
-    // );
+    const link = `http://localhost:3000/user/reset-password/${user._id}/${token}`;
+    sendMail(
+      email,
+      'Reset Password',
+      'Reset Password',
+      `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
+    );
     res.status(200).json({ msg: "Password reset link sent to email", link });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
@@ -201,7 +201,7 @@ const resetPassword = async (req, res) => {
   const { userId, token } = req.params;
   const { password } = req.body;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     if (decoded._id !== userId) {
       return res.status(400).json({ error: "Invalid token" });
     }
