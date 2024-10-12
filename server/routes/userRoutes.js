@@ -46,7 +46,7 @@ router.post("/addNotes", addNotes);
 router.get("/getDoctorById/:id", getDoctorById);
 router.post("/createDoctor", createDoctor);
 router.post("/createPatient", createPatient);
-router.post("/updateDoctorInfo/:id", updateDoctorInfo);
+router.put("/updateDoctorInfo/:id", updateDoctorInfo);
 router.post("/updatePassword", updatePassword);
 router.put("/updateProfile", singlePic, updateProfilePic);
 

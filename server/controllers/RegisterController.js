@@ -296,8 +296,8 @@ const createPatient = async (req, res) => {
 
 const updateUser = async (req, res) => {
   const { id } = req.params;
-  const { userName, email, password, avatar, role } = req.body;
-
+  const { fullName, email, password, avatar, role } = req.body;
+  console.log("req.body",req.body)
   try {
     if (req.user._id.toString() !== id) {
       return res
@@ -305,7 +305,7 @@ const updateUser = async (req, res) => {
         .json({ error: "You are not authorized to update this user" });
     }
 
-    const updateFields = { userName, email, avatar };
+    const updateFields = { fullName, email, avatar };
     if (password) {
       updateFields.password = await bcrypt.hash(password, 10);
     }
@@ -351,9 +351,6 @@ const updateDoctorInfo = async (req, res) => {
       console.log("Invalid user ID format:", id);
       return res.status(400).json({ error: "Invalid user ID format" });
     }
-
-    console.log("User ID is valid, proceeding to manually find the doctor...");
-
     // Manually find the doctor document in the doctors collection using the user ID as a string
     const db = mongoose.connection.db;
     const doctorsCursor = await db.collection("doctors").find({ user: id });
@@ -369,9 +366,6 @@ const updateDoctorInfo = async (req, res) => {
     }
 
     const doctor = doctors[0];
-    console.log("Doctor found:", doctor);
-
-    // Manually update the doctor document
     const updateResult = await db
       .collection("doctors")
       .updateOne({ _id: doctor._id }, { $set: updateFields });
@@ -390,7 +384,7 @@ const updateDoctorInfo = async (req, res) => {
     const updatedDoctors = await updatedDoctorCursor.toArray();
     const updatedDoctor = updatedDoctors[0];
 
-    console.log("Doctor updated successfully:", updatedDoctor);
+    // console.log("Doctor updated successfully:", updatedDoctor);
 
     res.status(200).json({
       msg: "Doctor information updated successfully",
