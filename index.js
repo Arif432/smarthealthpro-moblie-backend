@@ -41,6 +41,16 @@ app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(cors());
 
+// Updated CORS configuration
+const corsOptions = {
+  origin: "http://localhost:3000", // Replace with your frontend URL
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+
 const mongodbURI =
   process.env.MONGODB_URI ||
   "mongodb+srv://MuhammadArifNawaz:03006340067@task-manager-2nd.mesyzb7.mongodb.net/doctorsHealthSystem";
@@ -64,8 +74,22 @@ app.use("/", router);
 // Create HTTP server for Express and Socket.IO
 const http = require("http").createServer(app);
 
-// Socket.IO setup
-const io = require("socket.io")(http);
+// Updated Socket.IO setup
+const io = require("socket.io")(http, {
+  cors: {
+    origin: "http://localhost:3000", // Replace with your frontend URL
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  },
+});
+
+app.set("io", io);
+
+// Add error handling for Socket.IO connections
+io.on("connect_error", (err) => {
+  console.log(`Connect error due to ${err.message}`);
+});
 
 const userSocketMap = {};
 
@@ -85,20 +109,24 @@ io.on("connection", (socket) => {
     delete userSocketMap[userId];
   });
 
-  socket.on("sendMessage", ({ senderId, receiverId, message }) => {
-    const receiverSocketId = userSocketMap[receiverId];
+  socket.on("joinRoom", (room) => {
+    socket.join(room);
+    console.log(`User ${socket.id} joined room: ${room}`);
+  });
 
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("receiveMessage", {
-        senderId,
-        message,
-      });
-    }
+  socket.on("leaveRoom", (room) => {
+    socket.leave(room);
+    console.log(`User ${socket.id} left room: ${room}`);
+  });
+
+  socket.on("sendMessage", ({ newMessage, room }) => {
+    console.log(`Emitting new message to room: ${room}`);
+    io.to(room).emit("newMessage", newMessage);
   });
 });
 
 // Start the server
-http.listen(PORT, () => {
+http.listen(PORT, "0.0.0.0", () => {
   console.log(`Server and Socket.IO running on port ${PORT}`);
 });
 
@@ -119,15 +147,16 @@ app.post("/conversations", async (req, res) => {
     currentUserObjectIdName,
     otherUserObjectIdName,
   } = req.body;
-  console.log("Entering conversation creation endpoint");
+  // // console.log("Entering conversation creation endpoint");
 
   try {
-    console.log(
+    /* console.log(
       "Searching for existing conversation between",
       currentUserId,
       "and",
       otherUserId
     );
+    */
 
     const db = mongoose.connection.db;
     const collection = db.collection("conversations");
@@ -136,10 +165,10 @@ app.post("/conversations", async (req, res) => {
       participants: { $all: [currentUserId, otherUserId] },
     });
 
-    console.log("Conversation found:", conversation);
+    // console.log("Conversation found:", conversation);
 
     if (!conversation) {
-      console.log("No existing conversation found. Creating a new one...");
+      // console.log("No existing conversation found. Creating a new one...");
 
       const newConversation = {
         participants: [currentUserId, otherUserId],
@@ -150,7 +179,7 @@ app.post("/conversations", async (req, res) => {
       };
 
       const result = await collection.insertOne(newConversation);
-      console.log("Conversation successfully created:", result);
+      // console.log("Conversation successfully created:", result);
 
       // Convert the ObjectId to a string and send the response
       res.json({
@@ -158,7 +187,7 @@ app.post("/conversations", async (req, res) => {
         ...newConversation,
       });
     } else {
-      console.log("Existing conversation found:", conversation);
+      // console.log("Existing conversation found:", conversation);
 
       // Convert the ObjectId to a string before sending the response
       res.json({
@@ -178,12 +207,12 @@ app.post("/conversations", async (req, res) => {
 app.get("/conversations/:userId", async (req, res) => {
   const { userId } = req.params;
 
-  console.log("Received request to fetch conversations for userId:", userId);
+  // console.log("Received request to fetch conversations for userId:", userId);
 
   try {
     // Correctly instantiate ObjectId with the 'new' keyword
     const objectId = new ObjectId(userId);
-    console.log("Converted userId to ObjectId:", objectId);
+    // console.log("Converted userId to ObjectId:", objectId);
 
     // Fetch all conversations where the user is a participant
     const db = mongoose.connection.db;
@@ -194,7 +223,7 @@ app.get("/conversations/:userId", async (req, res) => {
       })
       .toArray();
 
-    console.log("Fetched conversations:", conversations);
+    // console.log("Fetched conversations:", conversations);
 
     // Convert ObjectId to string in each conversation
     const conversationsWithStringId = conversations.map((convo) => ({
@@ -274,8 +303,8 @@ app.put("/conversations/:id/lastMessage", async (req, res) => {
     const { id } = req.params;
     const { lastMessage } = req.body;
 
-    console.log("Received ID:", id);
-    console.log("Received lastMessage:", lastMessage);
+    // console.log("Received ID:", id);
+    // console.log("Received lastMessage:", lastMessage);
 
     // Create a query that checks for both string and ObjectId
     let query = {
@@ -285,7 +314,7 @@ app.put("/conversations/:id/lastMessage", async (req, res) => {
       ],
     };
 
-    console.log("Querying the database with:", query);
+    // console.log("Querying the database with:", query);
 
     // Get the database and collection
     const db = mongoose.connection.db;
@@ -296,7 +325,7 @@ app.put("/conversations/:id/lastMessage", async (req, res) => {
 
     // Check if the conversation was found
     if (!conversation) {
-      console.log("Conversation not found with ID:", id);
+      // console.log("Conversation not found with ID:", id);
       return res.status(404).json({ message: "Conversation not found" });
     }
 
@@ -309,10 +338,10 @@ app.put("/conversations/:id/lastMessage", async (req, res) => {
     });
 
     // Log update result
-    console.log("Update result:", updateResult);
+    // console.log("Update result:", updateResult);
 
     if (updateResult.matchedCount === 0) {
-      console.log("No documents matched the query");
+      // console.log("No documents matched the query");
       return res.status(404).json({ message: "Conversation not found" });
     }
 
@@ -320,7 +349,7 @@ app.put("/conversations/:id/lastMessage", async (req, res) => {
     const updatedConversation = await collection.findOne(query);
 
     // Log the updated document
-    console.log("Updated conversation:", updatedConversation);
+    // console.log("Updated conversation:", updatedConversation);
 
     res.json(updatedConversation);
   } catch (error) {
@@ -381,7 +410,7 @@ async function verifyFCMToken(token) {
       token: token,
     };
     await admin.messaging().send(message, true); // dryRun = true
-    console.log("Token is valid");
+    // console.log("Token is valid");
     return true;
   } catch (error) {
     console.error("Token is invalid:", error);
@@ -392,14 +421,14 @@ async function verifyFCMToken(token) {
 // Function to send notification to a specific user
 async function sendNotificationToUser(receiverId, title, body) {
   try {
-    console.log(`Attempting to send notification to ${receiverId}`);
+    // console.log(`Attempting to send notification to ${receiverId}`);
     const user = await User.findById(receiverId);
     if (!user || user.devices.length === 0) {
-      console.log(`No devices found for user ${receiverId}`);
+      // console.log(`No devices found for user ${receiverId}`);
       return;
     }
 
-    console.log(`Found ${user.devices.length} devices for user ${receiverId}`);
+    // console.log(`Found ${user.devices.length} devices for user ${receiverId}`);
     const tokens = user.devices.map((device) => device.fcmToken);
 
     let successCount = 0;
@@ -408,16 +437,16 @@ async function sendNotificationToUser(receiverId, title, body) {
 
     for (const token of tokens) {
       if (await validateToken(token)) {
-        console.log("Valid token is: ", token);
+        // // console.log("Valid token is: ", token);
         const message = {
           notification: { title, body },
           token: token,
         };
 
-        console.log(`Sending message to FCM:`, message);
+        // // console.log(`Sending message to FCM:`, message);
         try {
           const response = await admin.messaging().send(message);
-          console.log(`FCM Response for token ${token}:`, response);
+          // console.log(`FCM Response for token ${token}:`, response);
           successCount++;
         } catch (error) {
           console.error(
@@ -428,7 +457,7 @@ async function sendNotificationToUser(receiverId, title, body) {
           failureCount++;
         }
       } else {
-        console.log(`Removing invalid token: ${token}`);
+        // // console.log(`Removing invalid token: ${token}`);
         failedTokens.push(token);
         failureCount++;
       }
@@ -439,12 +468,12 @@ async function sendNotificationToUser(receiverId, title, body) {
     );
 
     if (failedTokens.length > 0) {
-      console.log(`Cleaning up invalid tokens...`);
+      // console.log(`Cleaning up invalid tokens...`);
       user.devices = user.devices.filter(
         (device) => !failedTokens.includes(device.fcmToken)
       );
       await user.save();
-      console.log(`Removed ${failedTokens.length} invalid token(s)`);
+      // console.log(`Removed ${failedTokens.length} invalid token(s)`);
     }
 
     return { successCount, failureCount };
@@ -557,10 +586,13 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
     const { content, sender, fileInfo } = req.body;
     const conversationId = req.params.conversationId;
 
-    console.log("file info from index.js: ", fileInfo);
+    if (!content && !fileInfo) {
+      return res.status(400).json({ error: "Message content is required" });
+    }
+
     const newMessage = {
       conversationId,
-      content: content,
+      content: content || "File shared",
       sender,
       timestamp: new Date(),
       fileInfo: fileInfo || null,
@@ -575,10 +607,11 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
         ...newMessage,
       };
 
-      // Emit the new message to connected clients
-      const receiverSocketId = userSocketMap[newMessage.sender];
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit("newMessage", insertedMessage);
+      const io = req.app.get("io");
+      if (io) {
+        io.to(conversationId).emit("newMessage", insertedMessage);
+      } else {
+        console.error("Socket.IO instance not found");
       }
 
       res.status(201).json(insertedMessage);
