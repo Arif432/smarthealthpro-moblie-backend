@@ -5,14 +5,12 @@ const { User, Doctor, Patient } = require("../models/UserModal");
 const { getURI } = require("../../utils/features");
 const { sendMail } = require("../../utils/nodemailerConfig");
 const { ObjectId } = mongoose.Types;
-const cloudinary = require("cloudinary")
-const {Message,Conversation} = require("../models/ChatMessageModal")
-const Appointment =  require('../models/AppointmentModal');
+const cloudinary = require("cloudinary");
+const { Message, Conversation } = require("../models/ChatMessageModal");
+const Appointment = require("../models/AppointmentModal");
 const Summary = require("../models/Summary");
 
 const JWT_SECRET = "your-hardcoded-secret-key";
-
-
 
 const registerUser = async (req, res) => {
   console.log("Request body:", req.body); // Log the incoming request body
@@ -39,7 +37,9 @@ const registerUser = async (req, res) => {
   try {
     // Check for required fields only for patients
     if (role === "patient" && (!dateOfBirth || !bloodType)) {
-      return res.status(400).json({ message: "Missing required fields for patient" });
+      return res
+        .status(400)
+        .json({ message: "Missing required fields for patient" });
     }
 
     // Generate a base username from the name
@@ -61,7 +61,9 @@ const registerUser = async (req, res) => {
 
     // Check password length
     if (password.length < 8) {
-      return res.status(400).json({ error: "Password should be at least 8 characters" });
+      return res
+        .status(400)
+        .json({ error: "Password should be at least 8 characters" });
     }
 
     // Hash the password
@@ -109,7 +111,9 @@ const registerUser = async (req, res) => {
         });
       } catch (error) {
         console.error("Error creating doctor record:", error); // Log error details
-        return res.status(500).json({ error: "Failed to create doctor record." });
+        return res
+          .status(500)
+          .json({ error: "Failed to create doctor record." });
       }
     }
 
@@ -128,7 +132,6 @@ const registerUser = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
 
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
@@ -197,8 +200,8 @@ const forgotPassword = async (req, res) => {
     const link = `http://localhost:3000/user/reset-password/${user._id}/${token}`;
     sendMail(
       email,
-      'Reset Password',
-      'Reset Password',
+      "Reset Password",
+      "Reset Password",
       `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
     );
     res.status(200).json({ msg: "Password reset link sent to email", link });
@@ -296,41 +299,67 @@ const createPatient = async (req, res) => {
 
 const updateUser = async (req, res) => {
   const { id } = req.params;
-  const { fullName, email, password, avatar, role } = req.body;
-  console.log("req.body",req.body)
+  const { fullName, email, password, avatar, role, specialization } = req.body;
+  console.log("req.body", req.body);
+
   try {
-    if (req.user._id.toString() !== id) {
-      return res
-        .status(403)
-        .json({ error: "You are not authorized to update this user" });
+    // Find the user first
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
     }
 
-    const updateFields = { fullName, email, avatar };
+    // Update user fields
+    const updateFields = {};
+    if (fullName) updateFields.fullName = fullName;
+    if (email) updateFields.email = email;
+    if (avatar) updateFields.avatar = avatar;
     if (password) {
       updateFields.password = await bcrypt.hash(password, 10);
     }
 
+    // Update role-specific fields
     if (role === "patient") {
       const { dateOfBirth, bloodType } = req.body;
       await Patient.findOneAndUpdate(
         { user: id },
         { dateOfBirth, bloodType },
-        { new: true }
+        { new: true, upsert: true }
       );
-    }
+    } else if (role === "doctor") {
+      const {
+        cnic,
+        address,
+        rating,
+        reviewCount,
+        numPatients,
+        about,
+        officeHours,
+        education,
+      } = req.body;
 
-    if (role === "doctor") {
-      const { cnic, address, specialization, education } = req.body;
       await Doctor.findOneAndUpdate(
         { user: id },
-        { cnic, address, specialization, education },
-        { new: true }
+        {
+          cnic,
+          address,
+          specialization,
+          rating,
+          reviewCount,
+          numPatients,
+          about,
+          officeHours,
+          education,
+        },
+        { new: true, upsert: true }
       );
     }
 
+    // Update the user
     const updatedUser = await User.findByIdAndUpdate(id, updateFields, {
       new: true,
     });
+
     res
       .status(200)
       .json({ msg: "User updated successfully", user: updatedUser });
@@ -490,7 +519,7 @@ const deleteUser = async (req, res) => {
     }
 
     // await Message.deleteMany({
-    //   sender: { 
+    //   sender: {
     //     $in: [mongoose.Types.ObjectId(id), id]  // Handles both ObjectId and string formats
     //   }
     // });
