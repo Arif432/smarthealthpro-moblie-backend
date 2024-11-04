@@ -32,9 +32,29 @@ const appointmentSchema = new mongoose.Schema({
       required: true,
     },
     avatar: {
-      type: String,
+      type: mongoose.Schema.Types.Mixed,
       default:
         "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
+      validate: {
+        validator: function (value) {
+          // Check if value is a string (URL)
+          if (typeof value === "string") {
+            return true;
+          }
+          // Check if value is an object with required properties
+          if (typeof value === "object" && value !== null) {
+            return (
+              value.public_id &&
+              value.url &&
+              typeof value.public_id === "string" &&
+              typeof value.url === "string"
+            );
+          }
+          return false;
+        },
+        message:
+          "Avatar must be either a string URL or an object with public_id and url properties",
+      },
     },
   },
   date: {
