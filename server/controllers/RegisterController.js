@@ -299,7 +299,24 @@ const createPatient = async (req, res) => {
 
 const updateUser = async (req, res) => {
   const { id } = req.params;
-  const { fullName, email, password, avatar, role, specialization } = req.body;
+  const {
+    fullName,
+    email,
+    password,
+    avatar,
+    role,
+    specialization,
+    officeHours,
+    cnic,
+    address,
+    rating,
+    reviewCount,
+    numPatients,
+    about,
+    education,
+    dateOfBirth,
+    bloodType,
+  } = req.body;
   console.log("req.body", req.body);
 
   try {
@@ -308,7 +325,8 @@ const updateUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-
+    const role = user.role;
+    console.log("role: ", role);
     // Update user fields
     const updateFields = {};
     if (fullName) updateFields.fullName = fullName;
@@ -336,6 +354,7 @@ const updateUser = async (req, res) => {
         about,
         officeHours,
         education,
+        specialization,
       } = req.body;
 
       await Doctor.findOneAndUpdate(
@@ -350,6 +369,7 @@ const updateUser = async (req, res) => {
           about,
           officeHours,
           education,
+          specialization,
         },
         { new: true, upsert: true }
       );
