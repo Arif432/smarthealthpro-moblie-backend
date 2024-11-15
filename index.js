@@ -110,6 +110,15 @@ io.on("connection", (socket) => {
   });
 
   socket.on("joinRoom", (room) => {
+    // Leave all previous rooms
+    socket.rooms.forEach((r) => {
+      if (r !== socket.id) {
+        // Don't leave the default room
+        socket.leave(r);
+      }
+    });
+
+    // Join the new room
     socket.join(room);
     console.log(`User ${socket.id} joined room: ${room}`);
   });
@@ -119,9 +128,20 @@ io.on("connection", (socket) => {
     console.log(`User ${socket.id} left room: ${room}`);
   });
 
-  socket.on("sendMessage", ({ newMessage, room }) => {
-    console.log(`Emitting new message to room: ${room}`);
-    io.to(room).emit("newMessage", newMessage);
+  socket.on("sendMessage", ({ newMessage, conversationId }) => {
+    if (!conversationId) {
+      console.error("No conversationId provided for message");
+      return;
+    }
+
+    console.log(`User ${socket.id} sending message to room: ${conversationId}`);
+    console.log("Message:", newMessage);
+    console.log("Socket rooms:", socket.rooms);
+
+    io.to(conversationId).emit("newMessage", {
+      ...newMessage,
+      conversationId, // Ensure conversationId is included
+    });
   });
 });
 
@@ -238,6 +258,42 @@ app.get("/conversations/:userId", async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to fetch conversations", error: error.message });
+  }
+});
+
+app.get("/conversations/:id/messages", async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const conversationId = req.params.id;
+
+    // Validate the conversationId
+    if (!ObjectId.isValid(conversationId)) {
+      return res.status(400).json({ error: "Invalid conversation ID" });
+    }
+
+    console.log("Fetching messages for conversation:", conversationId);
+
+    const messages = await db
+      .collection("messages")
+      .find({ conversationId })
+      .toArray();
+
+    console.log(`Found ${messages.length} messages`);
+
+    if (!messages.length) {
+      return res.json([]); // Return empty array instead of 404
+    }
+
+    // Convert message IDs to strings
+    const messagesWithStringIds = messages.map((message) => ({
+      ...message,
+      _id: message._id.toString(),
+    }));
+
+    res.json(messagesWithStringIds);
+  } catch (error) {
+    console.error("Error fetching messages:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
