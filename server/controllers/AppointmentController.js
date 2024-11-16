@@ -583,6 +583,189 @@ const getAvailableDoctors = async (req, res) => {
   }
 };
 
+const addMedicinesToAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { medicines } = req.body;
+
+    // Get direct access to MongoDB collection
+    const db = mongoose.connection.db;
+    const appointments = db.collection("appointments");
+
+    console.log("Looking for appointment with ID:", id);
+
+    // Get full document dump for debugging
+    const allAppointments = await appointments.find({}).toArray();
+    console.log("First appointment full document:", allAppointments[0]);
+
+    // Try with string comparison
+    const appointment = await appointments.findOne({
+      _id: { $eq: id },
+    });
+    console.log("Found appointment with string comparison:", appointment);
+
+    if (!appointment) {
+      // Try with ObjectId
+      try {
+        const objectId = new mongoose.Types.ObjectId(id);
+        const appointmentWithObjectId = await appointments.findOne({
+          _id: objectId,
+        });
+        console.log(
+          "Found appointment with ObjectId:",
+          appointmentWithObjectId
+        );
+
+        if (appointmentWithObjectId) {
+          // Update the appointment with new medicines
+          const updateResult = await appointments.updateOne(
+            { _id: objectId },
+            { $set: { medicines: medicines } }
+          );
+
+          if (updateResult.modifiedCount === 0) {
+            return res.status(400).json({
+              success: false,
+              message: "Failed to update appointment",
+            });
+          }
+
+          // Fetch the updated appointment
+          const updatedAppointment = await appointments.findOne({
+            _id: objectId,
+          });
+
+          return res.status(200).json({
+            success: true,
+            message: "Medicines added successfully",
+            appointment: updatedAppointment,
+          });
+        }
+      } catch (error) {
+        console.log("Error with ObjectId:", error);
+      }
+
+      // If we reached here, no appointment was found
+      const allIds = await appointments
+        .find({}, { projection: { _id: 1 } })
+        .toArray();
+      console.log(
+        "All document IDs in collection:",
+        allIds.map((doc) => doc._id.toString())
+      );
+
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    // If string comparison worked, update using string ID
+    const updateResult = await appointments.updateOne(
+      { _id: id },
+      { $set: { medicines: medicines } }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to update appointment",
+      });
+    }
+
+    // Fetch the updated appointment
+    const updatedAppointment = await appointments.findOne({
+      _id: id,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Medicines added successfully",
+      appointment: updatedAppointment,
+    });
+  } catch (error) {
+    console.error("Error adding medicines:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error adding medicines to appointment",
+      error: error.message,
+    });
+  }
+};
+
+const getMedicinesByAppointmentId = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = mongoose.connection.db;
+    const appointments = db.collection("appointments");
+
+    console.log("Looking for medicines for appointment ID:", id);
+
+    // Try to find the appointment and get its medicines
+    let appointment;
+    try {
+      appointment = await appointments.findOne(
+        { _id: id },
+        { projection: { medicines: 1, "doctor.name": 1, "patient.name": 1 } }
+      );
+      console.log("Found appointment:", appointment);
+    } catch (error) {
+      console.log("Error finding appointment:", error);
+    }
+
+    if (!appointment) {
+      // If not found with string ID, try with ObjectId
+      try {
+        const objectId = new mongoose.Types.ObjectId(id);
+        appointment = await appointments.findOne(
+          { _id: objectId },
+          { projection: { medicines: 1, "doctor.name": 1, "patient.name": 1 } }
+        );
+        console.log("Found appointment with ObjectId:", appointment);
+      } catch (error) {
+        console.log("Error with ObjectId:", error);
+      }
+    }
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    // If no medicines array exists
+    if (!appointment.medicines || appointment.medicines.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No medicines prescribed for this appointment",
+        data: {
+          doctorName: appointment.doctor?.name,
+          patientName: appointment.patient?.name,
+          medicines: [],
+        },
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Medicines fetched successfully",
+      data: {
+        doctorName: appointment.doctor?.name,
+        patientName: appointment.patient?.name,
+        medicines: appointment.medicines,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching medicines:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching medicines",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createAppointment,
   getAppointments,
@@ -593,4 +776,6 @@ module.exports = {
   getAppointmentsByDoctorId,
   scheduleAppointments,
   getAvailableDoctors,
+  addMedicinesToAppointment,
+  getMedicinesByAppointmentId,
 };

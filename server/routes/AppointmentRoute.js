@@ -11,6 +11,8 @@ const {
   getAppointmentsByDoctorId,
   scheduleAppointments,
   getAvailableDoctors,
+  addMedicinesToAppointment,
+  getMedicinesByAppointmentId,
 } = require("../controllers/AppointmentController");
 
 // router.use(verifyUser);
@@ -21,9 +23,11 @@ router.get(
   getAppointmentsByPatientId
 );
 router.get("/getAppointmentsByDoctorId/:doctorId", getAppointmentsByDoctorId);
+router.get("/:id/medicines", getMedicinesByAppointmentId);
 router.post("/getAvailableDoctors", getAvailableDoctors);
 router.post("/postAppointment", createAppointment);
 router.post("/scheduleAppointments", scheduleAppointments);
+router.post("/:id/medicines", addMedicinesToAppointment);
 router.put("/updateAppointment/:id", updateAppointment);
 router.delete("/deleteAppointment/:id", deleteAppointment);
 

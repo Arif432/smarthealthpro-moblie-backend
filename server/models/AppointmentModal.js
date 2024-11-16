@@ -1,5 +1,28 @@
 const mongoose = require("mongoose");
 
+const medicineSchema = new mongoose.Schema({
+  medication: {
+    type: String,
+    required: true,
+  },
+  dosage: {
+    type: String,
+    required: true,
+  },
+  frequency: {
+    type: String,
+    required: true,
+  },
+  duration: {
+    type: String,
+    required: true,
+  },
+  instructions: {
+    type: String,
+    required: true,
+  },
+});
+
 const appointmentSchema = new mongoose.Schema({
   doctor: {
     id: {
@@ -37,11 +60,9 @@ const appointmentSchema = new mongoose.Schema({
         "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
       validate: {
         validator: function (value) {
-          // Check if value is a string (URL)
           if (typeof value === "string") {
             return true;
           }
-          // Check if value is an object with required properties
           if (typeof value === "object" && value !== null) {
             return (
               value.public_id &&
@@ -61,7 +82,6 @@ const appointmentSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
-
   appointmentStatus: {
     type: String,
     enum: ["tbd", "pending", "visited", "cancelled"],
@@ -83,6 +103,11 @@ const appointmentSchema = new mongoose.Schema({
   bookedOn: {
     type: String,
     required: true,
+  },
+  // Added medicines array
+  medicines: {
+    type: [medicineSchema],
+    default: [],
   },
 });
 
