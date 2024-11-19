@@ -735,33 +735,29 @@ const getAppointmentById = async (appointmentId) => {
 };
 
 const addNotes = async (req, res) => {
-  const { note, appointmentId } = req.body;
-
+  const { note, patient, doctor } = req.body;
   try {
     // Validate input
-    if (!note || !appointmentId) {
+    if (!note || !patient || !doctor) {
       return res
         .status(400)
-        .json({ error: "note, and appointment ID are required" });
+        .json({ error: "note, doctor and user ID are required" });
     }
 
-    // Try to find the appointment using both ObjectId and string ID
-    let appointment;
-    appointment = await getAppointmentById(appointmentId);
-    console.log("appointment: ", appointment);
-    const patientUserId = appointment.patient.id;
-    console.log("patient id: ", patientUserId);
-    console.log("appointment._id: ", appointment._id);
-
-    // Find the user (patient) and update their notes
-    const updatedUser = await User.findByIdAndUpdate(patientUserId, {
-      notes: [
-        {
-          doctorId: appointment.doctor.id,
-          note,
+    // Use $push operator to add the new note to the existing notes array
+    const updatedUser = await User.findByIdAndUpdate(
+      patient,
+      {
+        $push: {
+          notes: {
+            doctor,
+            note,
+            date: new Date().toISOString(),
+          },
         },
-      ],
-    });
+      },
+      { new: true } // Return the updated document
+    );
 
     if (!updatedUser) {
       return res.status(404).json({ error: "User (patient) not found" });
@@ -773,6 +769,103 @@ const addNotes = async (req, res) => {
   } catch (error) {
     console.error("Error adding note:", error);
     res.status(500).json({ error: "An error occurred while adding the note" });
+  }
+};
+
+const getMatchingNotes = async (req, res) => {
+  try {
+    const { doctorId, patientId } = req.query;
+
+    if (!doctorId || !patientId) {
+      return res.status(400).json({
+        success: false,
+        message: "Doctor ID and Patient ID are required",
+      });
+    }
+
+    // Verify doctor exists and has doctor role
+    const doctor = await User.findOne({
+      _id: doctorId,
+      role: "doctor",
+    });
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
+
+    // Find patient and verify role
+    const patient = await User.findOne({
+      _id: patientId,
+      role: "patient",
+    });
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: "Patient not found",
+      });
+    }
+
+    // Get notes for this doctor
+    const doctorNotes = patient.notes.filter(
+      (note) => note.doctor._id.toString() === doctorId.toString()
+    );
+
+    res.status(200).json({
+      success: true,
+      notes: doctorNotes,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching patient notes",
+      error: error.message,
+    });
+  }
+};
+
+const getSummariesByPatientId = async (req, res) => {
+  const { patientId } = req.params;
+
+  try {
+    // Validate if the patientId is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient ID format",
+      });
+    }
+
+    // Find all summaries for the given patient ID
+    // Sort by date in descending order (newest first)
+    const summaries = await Summary.find({ patientID: patientId })
+      .sort({ date: -1 })
+      .lean(); // Use lean() for better performance since we don't need Mongoose document features
+
+    // Check if any summaries were found
+    if (!summaries || summaries.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No summaries found for this patient",
+      });
+    }
+
+    // Return the summaries
+    res.status(200).json({
+      success: true,
+      count: summaries.length,
+      data: summaries,
+    });
+  } catch (error) {
+    console.error("Error fetching patient summaries:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching patient summaries",
+      error: error.message,
+    });
   }
 };
 
@@ -795,4 +888,6 @@ module.exports = {
   updatePassword,
   getAllPatients,
   addNotes,
+  getMatchingNotes,
+  getSummariesByPatientId,
 };

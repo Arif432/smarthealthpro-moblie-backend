@@ -17,11 +17,29 @@ const userDeviceSchema = new mongoose.Schema({
 });
 
 const notesSchema = new mongoose.Schema({
-  doctorId: {
-    type: String,
+  doctor: {
+    _id: mongoose.Schema.Types.ObjectId,
+    fullName: String,
+    avatar: {
+      type: mongoose.Schema.Types.Mixed,
+      validate: {
+        validator: function (v) {
+          return (
+            typeof v === "string" ||
+            (typeof v === "object" && v.public_id && v.url)
+          );
+        },
+        message:
+          "Avatar must be either a string or an object with public_id and url",
+      },
+    },
   },
   note: {
     type: String,
+  },
+  date: {
+    type: Date,
+    required: false,
   },
 });
 

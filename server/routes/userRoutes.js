@@ -20,6 +20,8 @@ const {
   updateProfilePic,
   getAllPatients,
   addNotes,
+  getMatchingNotes,
+  getSummariesByPatientId,
 } = require("../controllers/RegisterController");
 const { singlePic } = require("../../middle/multer");
 
@@ -42,8 +44,10 @@ router.post("/reset-password/:userId/:token", resetPassword);
 router.get("/getDoctorsBySatisfaction", getDoctorsBySatisfaction);
 router.get("/getAllDoctors", getAllDoctors);
 router.get("/getAllPatients", getAllPatients);
-router.post("/addNotes", addNotes);
 router.get("/getDoctorById/:id", getDoctorById);
+router.get("/getMatchingNotes", getMatchingNotes);
+router.get("/getSummariesByPatientId/:patientId", getSummariesByPatientId);
+router.post("/addNotes", addNotes);
 router.post("/createDoctor", createDoctor);
 router.post("/createPatient", createPatient);
 router.put("/updateDoctorInfo/:id", updateDoctorInfo);
