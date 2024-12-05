@@ -20,7 +20,8 @@ const crypto = require("crypto");
 
 require("dotenv").config();
 
-const serviceAccount = require("./secrets/serviceAccountKey.json");
+const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH||"./secrets/serviceAccountKey.json");
+console.log("Resolved Firebase path:", process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
 const { User } = require("./server/models/UserModal");
 const { Console } = require("console");
 
@@ -30,9 +31,9 @@ admin.initializeApp({
 });
 
 cloudinary.config({
-  cloud_name: CLOUDNARY,
-  api_key: KEY,
-  api_secret: SECRET,
+  cloud_name: process.env.CLOUDNARY,
+  api_key: process.env.KEY,
+  api_secret: process.env.SECRET,
 });
 
 const app = express();
@@ -43,7 +44,7 @@ app.use(cors());
 
 // Updated CORS configuration
 const corsOptions = {
-  origin: "http://localhost:3000", // Replace with your frontend URL
+  origin: process.env.FRONTEND_URL||"http://localhost:3000", // Replace with your frontend URL
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -55,6 +56,7 @@ const mongodbURI =
   process.env.MONGODB_URI ||
   "mongodb+srv://MuhammadArifNawaz:03006340067@task-manager-2nd.mesyzb7.mongodb.net/doctorsHealthSystem";
 const PORT = process.env.PORT || 5000;
+console.log("port",PORT)
 
 mongoose
   .connect(mongodbURI, { useNewUrlParser: true, useUnifiedTopology: true })
@@ -77,7 +79,7 @@ const http = require("http").createServer(app);
 // Updated Socket.IO setup
 const io = require("socket.io")(http, {
   cors: {
-    origin: "http://localhost:3000", // Replace with your frontend URL
+    origin: process.env.FRONTEND_URL||"http://localhost:3000", // Replace with your frontend URL
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
