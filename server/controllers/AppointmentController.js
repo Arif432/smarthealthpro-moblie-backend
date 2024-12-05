@@ -1,10 +1,9 @@
 const Appointment = require("../models/AppointmentModal");
 const mongoose = require("mongoose");
-const { ObjectId } = require("mongodb");
 const moment = require("moment");
 const { Doctor } = require("../models/UserModal");
-// Helper functions
 
+// Helper functions remain unchanged
 const findDoctorById = async (doctorId) => {
   try {
     const doctor = await Doctor.findById(doctorId).populate(
@@ -33,6 +32,7 @@ const getDoctorById = (doctorId) => {
   return doctors[doctorId];
 };
 
+// Other helper functions remain unchanged
 const generateTimeSlots = (doctorId, day) => {
   const doctor = getDoctorById(doctorId);
   const office_hours = doctor.office_hours;
@@ -90,7 +90,7 @@ const assignTimeSlots = (time_slots, patients) => {
   return { assigned_appointments, waiting_list };
 };
 
-// Controller functions
+// Updated Controller functions
 const createAppointment = async (req, res) => {
   try {
     const appointment = await Appointment.create(req.body);
@@ -106,10 +106,10 @@ const getAppointments = async (req, res) => {
     let query = {};
 
     if (doctorId) {
-      query["doctor.id"] = doctorId;
+      query["doctor.id"] = new mongoose.Types.ObjectId(doctorId);
     }
     if (patientId) {
-      query["patient.id"] = patientId;
+      query["patient.id"] = new mongoose.Types.ObjectId(patientId);
     }
 
     const appointments = await Appointment.find(query);
@@ -121,62 +121,13 @@ const getAppointments = async (req, res) => {
 
 const getAppointmentById = async (req, res) => {
   try {
-    const db = mongoose.connection.db;
-    const appointments = db.collection("appointments");
-
-    const appointmentId = req.params.id;
-    console.log("Received appointment ID:", appointmentId);
-
-    // Try to find the appointment using both ObjectId and string ID
-    let appointment;
-    try {
-      appointment = await appointments.findOne({
-        _id: new ObjectId(appointmentId),
-      });
-      console.log("Query result using ObjectId:", appointment);
-    } catch (error) {
-      console.log("Error with ObjectId, trying string ID");
-      appointment = await appointments.findOne({ _id: appointmentId });
-      console.log("Query result using string ID:", appointment);
-    }
+    const appointmentId = new mongoose.Types.ObjectId(req.params.id);
+    const appointment = await Appointment.findById(appointmentId);
 
     if (!appointment) {
-      console.log("Appointment not found, trying flexible search");
-
-      // Flexible search query
-      const flexibleQuery = {
-        $or: [
-          { _id: appointmentId },
-          { "doctor.id": appointmentId },
-          { "doctor.name": { $regex: appointmentId, $options: "i" } },
-          { "patient.id": appointmentId },
-          { "patient.name": { $regex: appointmentId, $options: "i" } },
-          { appointmentStatus: { $regex: appointmentId, $options: "i" } },
-          { description: { $regex: appointmentId, $options: "i" } },
-          { location: { $regex: appointmentId, $options: "i" } },
-        ],
-      };
-
-      appointment = await appointments.findOne(flexibleQuery);
-      console.log("Flexible query result:", appointment);
-    }
-
-    if (!appointment) {
-      console.log("Appointment not found in database");
-
-      // Log all document IDs in the collection
-      const allIds = await appointments
-        .find({}, { projection: { _id: 1 } })
-        .toArray();
-      console.log(
-        "All document IDs in collection:",
-        allIds.map((doc) => doc._id.toString())
-      );
-
       return res.status(404).json({ message: "Appointment not found" });
     }
 
-    console.log("Found appointment:", appointment);
     res.status(200).json(appointment);
   } catch (error) {
     console.error("Error fetching appointment:", error);
@@ -188,8 +139,8 @@ const getAppointmentById = async (req, res) => {
 
 const getAppointmentsByPatientId = async (req, res) => {
   try {
-    const { patientId } = req.params;
-    const appointments = await Appointment.find({ patient: patientId });
+    const patientId = new mongoose.Types.ObjectId(req.params.patientId);
+    const appointments = await Appointment.find({ "patient.id": patientId });
     return res.status(200).json(appointments);
   } catch (error) {
     return res.status(500).json({ error: "Error fetching appointments" });
@@ -198,7 +149,7 @@ const getAppointmentsByPatientId = async (req, res) => {
 
 const getAppointmentsByDoctorId = async (req, res) => {
   try {
-    const { doctorId } = req.params;
+    const doctorId = new mongoose.Types.ObjectId(req.params.doctorId);
     const appointments = await Appointment.find({ "doctor.id": doctorId });
     return res.status(200).json(appointments);
   } catch (error) {
@@ -207,12 +158,12 @@ const getAppointmentsByDoctorId = async (req, res) => {
 };
 
 const updateAppointment = async (req, res) => {
-  const { id } = req.params;
-  const updateFields = req.body;
-
   try {
+    const appointmentId = new mongoose.Types.ObjectId(req.params.id);
+    const updateFields = req.body;
+
     const updatedAppointment = await Appointment.findByIdAndUpdate(
-      id,
+      appointmentId,
       { $set: updateFields },
       { new: true, runValidators: true }
     );
@@ -228,9 +179,10 @@ const updateAppointment = async (req, res) => {
 };
 
 const deleteAppointment = async (req, res) => {
-  const { id } = req.params;
   try {
-    const appointment = await Appointment.findByIdAndDelete(id);
+    const appointmentId = new mongoose.Types.ObjectId(req.params.id);
+    const appointment = await Appointment.findByIdAndDelete(appointmentId);
+
     if (!appointment) {
       return res.status(404).json({ error: "Appointment not found" });
     }
@@ -257,7 +209,7 @@ const scheduleAppointments = async (req, res) => {
     }));
 
     const firstPatient = patients[0];
-    const time_slots = generateTimeSlots(firstPatient.doctorId, day);
+    const time_slots = generateTimeSlots(firstPatient.doctorId.toString(), day);
     const sorted_patients = sortPatients(patients);
     const { assigned_appointments, waiting_list } = assignTimeSlots(
       time_slots,
@@ -301,431 +253,131 @@ const scheduleAppointments = async (req, res) => {
       waiting_list: waiting_list.map((w) => ({ appointment: w.appointment })),
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Error scheduling appointments", error: error.message });
-  }
-};
-
-const getAvailableDoctors = async (req, res) => {
-  try {
-    console.log("1. Starting getAvailableDoctors function");
-    const { specializations } = req.body;
-    console.log(
-      "2. Requested specializations:",
-      JSON.stringify(specializations)
-    );
-
-    const startDate = moment().add(1, "days").startOf("day");
-    const endDate = moment(startDate).add(7, "days");
-    console.log(
-      `3. Checking availability from ${startDate.format(
-        "YYYY-MM-DD"
-      )} to ${endDate.format("YYYY-MM-DD")}`
-    );
-
-    // Step 1: Get all doctors
-    let doctors;
-    try {
-      console.log("4. Fetching doctors from database");
-      const query =
-        specializations && Object.keys(specializations).length > 0
-          ? {
-              specialization: {
-                $in: Object.keys(specializations).map(
-                  (spec) => new RegExp(`^${spec}$`, "i")
-                ),
-              },
-            }
-          : {};
-      doctors = await Doctor.find(query).populate("user", "-password");
-      console.log(`5. Retrieved ${doctors.length} doctors from database`);
-      if (doctors.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "No doctors found for the requested specializations or in general",
-        });
-      }
-    } catch (error) {
-      console.error("6. Error fetching doctors:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to fetch doctors from database",
-        error: error.message,
-      });
-    }
-
-    // Step 2: Filter doctors based on availability for the next week
-    let availableDoctors = [];
-    try {
-      console.log("7. Starting to filter doctors based on availability");
-      const appointmentPromises = [];
-
-      for (
-        let currentDate = moment(startDate);
-        currentDate.isSameOrBefore(endDate);
-        currentDate.add(1, "day")
-      ) {
-        const dayOfWeek = currentDate.format("dddd").toLowerCase();
-        console.log(
-          `8. Checking availability for ${dayOfWeek}, ${currentDate.format(
-            "YYYY-MM-DD"
-          )}`
-        );
-
-        for (const doctor of doctors) {
-          if (
-            !doctor.officeHours ||
-            !doctor.officeHours[dayOfWeek] ||
-            doctor.officeHours[dayOfWeek] === "Closed"
-          ) {
-            continue;
-          }
-
-          const [start, end] = doctor.officeHours[dayOfWeek].split(" - ");
-          const startTime = moment(start, "hh:mm A");
-          const endTime = moment(end, "hh:mm A");
-          const totalSlots = Math.floor(
-            endTime.diff(startTime, "minutes") / 30
-          );
-
-          appointmentPromises.push(
-            Appointment.countDocuments({
-              "doctor.id": doctor._id,
-              date: currentDate.toDate(),
-              appointmentStatus: { $in: ["pending", "confirmed"] },
-            }).then((count) => ({
-              doctor,
-              availableDate: currentDate.toDate(),
-              totalSlots,
-              bookedSlots: count,
-            }))
-          );
-        }
-      }
-
-      const results = await Promise.all(appointmentPromises);
-      availableDoctors = results.filter(
-        (result) => result.bookedSlots < result.totalSlots
-      );
-
-      console.log(`9. Found ${availableDoctors.length} available doctors`);
-      if (availableDoctors.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "No available doctors found for the given date range",
-        });
-      }
-    } catch (error) {
-      console.error("10. Error filtering available doctors:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to filter available doctors",
-        error: error.message,
-      });
-    }
-
-    // Step 3: Select doctors based on specialization percentages and ratings
-    const totalDoctors = 6; // Set this to your desired number of doctors to return
-    let selectedDoctors = [];
-
-    try {
-      console.log("11. Starting doctor selection process");
-      // Group doctors by specialization and sort by availability date and rating
-      const doctorsBySpecialization = availableDoctors.reduce(
-        (acc, doctorInfo) => {
-          const { doctor } = doctorInfo;
-          if (!acc[doctor.specialization]) {
-            acc[doctor.specialization] = [];
-          }
-          acc[doctor.specialization].push(doctorInfo);
-          return acc;
-        },
-        {}
-      );
-
-      for (const specialization in doctorsBySpecialization) {
-        doctorsBySpecialization[specialization].sort((a, b) => {
-          if (a.availableDate.getTime() !== b.availableDate.getTime()) {
-            return a.availableDate.getTime() - b.availableDate.getTime();
-          }
-          return b.doctor.rating - a.doctor.rating;
-        });
-      }
-
-      console.log(
-        "12. Doctors grouped and sorted by specialization, date, and rating"
-      );
-      console.log(
-        "Available specializations:",
-        Object.keys(doctorsBySpecialization)
-      );
-
-      // Calculate the number of doctors needed for each specialization
-      let doctorCounts = {};
-      if (!specializations || Object.keys(specializations).length === 0) {
-        // If no specializations given, select 2 doctors from each available specialization
-        Object.keys(doctorsBySpecialization).forEach((spec) => {
-          doctorCounts[spec] = 2;
-        });
-      } else if (Object.keys(specializations).length === 1) {
-        // If only one specialization is given, select all 6 doctors from it
-        const spec = Object.keys(specializations)[0];
-        doctorCounts[spec] = totalDoctors;
-      } else {
-        // Calculate based on given percentages
-        doctorCounts = Object.entries(specializations).reduce(
-          (acc, [spec, percentage]) => {
-            acc[spec] = Math.round((percentage / 100) * totalDoctors);
-            return acc;
-          },
-          {}
-        );
-      }
-
-      console.log("13. Calculated doctor counts:", doctorCounts);
-
-      // Select doctors based on calculated counts
-      for (const [specialization, count] of Object.entries(doctorCounts)) {
-        console.log(
-          `14. Attempting to select ${count} doctors for ${specialization}`
-        );
-        const availableDoctorsForSpec =
-          doctorsBySpecialization[specialization] || [];
-        const selected = availableDoctorsForSpec.slice(0, count);
-        selectedDoctors.push(
-          ...selected.map((d) => ({ ...d, specialization }))
-        );
-
-        // Remove selected doctors from the pool
-        doctorsBySpecialization[specialization] =
-          availableDoctorsForSpec.slice(count);
-      }
-
-      // If we have fewer doctors than needed, fill from other specializations
-      const allSpecializations = Object.keys(doctorsBySpecialization);
-      let currentSpecIndex = 0;
-
-      while (
-        selectedDoctors.length < totalDoctors &&
-        currentSpecIndex < allSpecializations.length
-      ) {
-        const specialization = allSpecializations[currentSpecIndex];
-        const availableDoctors = doctorsBySpecialization[specialization];
-
-        if (availableDoctors && availableDoctors.length > 0) {
-          const doctor = availableDoctors.shift();
-          selectedDoctors.push({ ...doctor, specialization });
-        } else {
-          currentSpecIndex++;
-        }
-
-        if (currentSpecIndex >= allSpecializations.length) {
-          currentSpecIndex = 0; // Reset to the beginning if we've gone through all specializations
-        }
-      }
-
-      console.log(
-        "15. Selected doctors before shuffling:",
-        selectedDoctors.map((d) => d.specialization)
-      );
-
-      if (selectedDoctors.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "No doctors could be selected based on the given criteria",
-        });
-      }
-
-      // Shuffle the selected doctors
-      for (let i = selectedDoctors.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [selectedDoctors[i], selectedDoctors[j]] = [
-          selectedDoctors[j],
-          selectedDoctors[i],
-        ];
-      }
-
-      console.log(
-        "16. Selected doctors after shuffling:",
-        selectedDoctors.map((d) => d.specialization)
-      );
-
-      // Prepare the final response
-      const finalSelection = selectedDoctors.map((doctorInfo) => ({
-        ...doctorInfo.doctor.toObject(),
-        availableDate: doctorInfo.availableDate,
-        totalSlots: doctorInfo.totalSlots,
-        bookedSlots: doctorInfo.bookedSlots,
-      }));
-
-      res.status(200).json({
-        success: true,
-        count: finalSelection.length,
-        data: finalSelection,
-      });
-    } catch (error) {
-      console.error("17. Error in doctor selection process:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to select doctors based on criteria",
-        error: error.message,
-      });
-    }
-  } catch (error) {
-    console.error("18. Fatal error in getAvailableDoctors:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching available doctors",
+    return res.status(500).json({
+      message: "Error scheduling appointments",
       error: error.message,
     });
   }
 };
 
-const addMedicinesToAppointment = async (req, res) => {
+const addPrescriptionToAppointment = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { medicines } = req.body;
+    const appointmentId = new mongoose.Types.ObjectId(req.params.id);
+    const { prescription } = req.body;
 
-    // Get direct access to MongoDB collection
-    const db = mongoose.connection.db;
-    const appointments = db.collection("appointments");
+    const generatePrescriptionId = (index) => {
+      const paddedNum = (index + 1).toString().padStart(3, "0");
+      return `presc-${paddedNum}`;
+    };
 
-    console.log("Looking for appointment with ID:", id);
+    const prescriptionWithIds = Array.isArray(prescription)
+      ? prescription.map((med, index) => ({
+          id: med.id || generatePrescriptionId(index),
+          medication: med.medication,
+          dosage: med.dosage,
+          frequency: med.frequency,
+          duration: med.duration,
+          instructions: med.instructions,
+        }))
+      : [
+          {
+            id: generatePrescriptionId(0),
+            ...prescription,
+          },
+        ];
 
-    // Get full document dump for debugging
-    const allAppointments = await appointments.find({}).toArray();
-    console.log("First appointment full document:", allAppointments[0]);
+    const updatedAppointment = await Appointment.findByIdAndUpdate(
+      appointmentId,
+      { $set: { prescription: prescriptionWithIds } },
+      { new: true }
+    );
 
-    // Try with string comparison
-    const appointment = await appointments.findOne({
-      _id: { $eq: id },
-    });
-    console.log("Found appointment with string comparison:", appointment);
-
-    if (!appointment) {
-      // Try with ObjectId
-      try {
-        const objectId = new mongoose.Types.ObjectId(id);
-        const appointmentWithObjectId = await appointments.findOne({
-          _id: objectId,
-        });
-        console.log(
-          "Found appointment with ObjectId:",
-          appointmentWithObjectId
-        );
-
-        if (appointmentWithObjectId) {
-          // Update the appointment with new medicines
-          const updateResult = await appointments.updateOne(
-            { _id: objectId },
-            { $set: { medicines: medicines } }
-          );
-
-          if (updateResult.modifiedCount === 0) {
-            return res.status(400).json({
-              success: false,
-              message: "Failed to update appointment",
-            });
-          }
-
-          // Fetch the updated appointment
-          const updatedAppointment = await appointments.findOne({
-            _id: objectId,
-          });
-
-          return res.status(200).json({
-            success: true,
-            message: "Medicines added successfully",
-            appointment: updatedAppointment,
-          });
-        }
-      } catch (error) {
-        console.log("Error with ObjectId:", error);
-      }
-
-      // If we reached here, no appointment was found
-      const allIds = await appointments
-        .find({}, { projection: { _id: 1 } })
-        .toArray();
-      console.log(
-        "All document IDs in collection:",
-        allIds.map((doc) => doc._id.toString())
-      );
-
+    if (!updatedAppointment) {
       return res.status(404).json({
         success: false,
         message: "Appointment not found",
       });
     }
 
-    // If string comparison worked, update using string ID
-    const updateResult = await appointments.updateOne(
-      { _id: id },
-      { $set: { medicines: medicines } }
-    );
-
-    if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Failed to update appointment",
-      });
-    }
-
-    // Fetch the updated appointment
-    const updatedAppointment = await appointments.findOne({
-      _id: id,
-    });
-
     res.status(200).json({
       success: true,
-      message: "Medicines added successfully",
+      message: "Prescription added successfully",
       appointment: updatedAppointment,
     });
   } catch (error) {
-    console.error("Error adding medicines:", error);
+    console.error("Error adding prescription:", error);
     res.status(500).json({
       success: false,
-      message: "Error adding medicines to appointment",
+      message: "Error adding prescription to appointment",
       error: error.message,
     });
   }
 };
 
-const getMedicinesByAppointmentId = async (req, res) => {
+const getPrescriptionByPatientId = async (req, res) => {
   try {
-    const { id } = req.params;
-    const db = mongoose.connection.db;
-    const appointments = db.collection("appointments");
+    const patientId = new mongoose.Types.ObjectId(req.params.id);
+    const appointments = await Appointment.find({ "patient.id": patientId });
 
-    console.log("Looking for medicines for appointment ID:", id);
-
-    // Try to find the appointment and get its medicines
-    let appointment;
-    try {
-      appointment = await appointments.findOne(
-        { _id: id },
-        { projection: { medicines: 1, "doctor.name": 1, "patient.name": 1 } }
-      );
-      console.log("Found appointment:", appointment);
-    } catch (error) {
-      console.log("Error finding appointment:", error);
+    if (!appointments || appointments.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No appointments found for this patient",
+      });
     }
 
-    if (!appointment) {
-      // If not found with string ID, try with ObjectId
-      try {
-        const objectId = new mongoose.Types.ObjectId(id);
-        appointment = await appointments.findOne(
-          { _id: objectId },
-          { projection: { medicines: 1, "doctor.name": 1, "patient.name": 1 } }
-        );
-        console.log("Found appointment with ObjectId:", appointment);
-      } catch (error) {
-        console.log("Error with ObjectId:", error);
-      }
+    const formattedPrescriptions = appointments
+      .filter(
+        (appointment) =>
+          appointment.prescription && appointment.prescription.length > 0
+      )
+      .map((appointment) => ({
+        appointmentId: appointment._id,
+        date: appointment.date,
+        time: appointment.time,
+        doctorName: appointment.doctor?.name,
+        patientName: appointment.patient?.name,
+        prescriptions: appointment.prescription || [],
+        appointmentStatus: appointment.appointmentStatus,
+      }));
+
+    if (formattedPrescriptions.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No prescriptions found for any appointments",
+        data: [],
+      });
     }
+
+    formattedPrescriptions.sort((a, b) => {
+      const dateA = new Date(`${a.date} ${a.time}`);
+      const dateB = new Date(`${b.date} ${b.time}`);
+      return dateB - dateA;
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Prescriptions fetched successfully",
+      count: formattedPrescriptions.length,
+      data: formattedPrescriptions,
+    });
+  } catch (error) {
+    console.error("Error fetching prescriptions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching prescriptions",
+      error: error.message,
+    });
+  }
+};
+
+const updatePrescription = async (req, res) => {
+  try {
+    const appointmentId = new mongoose.Types.ObjectId(req.params.appointmentId);
+    const { prescriptionId } = req.params;
+    const updatedData = req.body;
+
+    const appointment = await Appointment.findById(appointmentId);
 
     if (!appointment) {
       return res.status(404).json({
@@ -734,33 +386,38 @@ const getMedicinesByAppointmentId = async (req, res) => {
       });
     }
 
-    // If no medicines array exists
-    if (!appointment.medicines || appointment.medicines.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "No medicines prescribed for this appointment",
-        data: {
-          doctorName: appointment.doctor?.name,
-          patientName: appointment.patient?.name,
-          medicines: [],
-        },
+    const updatedPrescriptions = appointment.prescription.map(
+      (prescription) => {
+        if (prescription.id === prescriptionId) {
+          return { ...prescription.toObject(), ...updatedData };
+        }
+        return prescription;
+      }
+    );
+
+    const updatedAppointment = await Appointment.findByIdAndUpdate(
+      appointmentId,
+      { $set: { prescription: updatedPrescriptions } },
+      { new: true }
+    );
+
+    if (!updatedAppointment) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to update prescription",
       });
     }
 
     res.status(200).json({
       success: true,
-      message: "Medicines fetched successfully",
-      data: {
-        doctorName: appointment.doctor?.name,
-        patientName: appointment.patient?.name,
-        medicines: appointment.medicines,
-      },
+      message: "Prescription updated successfully",
+      appointment: updatedAppointment,
     });
   } catch (error) {
-    console.error("Error fetching medicines:", error);
+    console.error("Error updating prescription:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching medicines",
+      message: "Error updating prescription",
       error: error.message,
     });
   }
@@ -775,7 +432,7 @@ module.exports = {
   getAppointmentsByPatientId,
   getAppointmentsByDoctorId,
   scheduleAppointments,
-  getAvailableDoctors,
-  addMedicinesToAppointment,
-  getMedicinesByAppointmentId,
+  addPrescriptionToAppointment,
+  getPrescriptionByPatientId,
+  updatePrescription,
 };

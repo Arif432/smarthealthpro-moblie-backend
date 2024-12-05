@@ -6,6 +6,9 @@ const summarySchema = new mongoose.Schema(
     patientID: {
       type: mongoose.Schema.Types.ObjectId, // Can be ObjectId or String
     },
+    doctorID: {
+      type: mongoose.Schema.Types.ObjectId, // Can be ObjectId or String
+    },
     date: {
       type: Date,
       default: new Date().toISOString(), // Default to the current date if not provided

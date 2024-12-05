@@ -21,7 +21,8 @@ const {
   getAllPatients,
   addNotes,
   getMatchingNotes,
-  getSummariesByPatientId,
+  getSummaries,
+  addSummary,
 } = require("../controllers/RegisterController");
 const { singlePic } = require("../../middle/multer");
 
@@ -46,7 +47,8 @@ router.get("/getAllDoctors", getAllDoctors);
 router.get("/getAllPatients", getAllPatients);
 router.get("/getDoctorById/:id", getDoctorById);
 router.get("/getMatchingNotes", getMatchingNotes);
-router.get("/getSummariesByPatientId/:patientId", getSummariesByPatientId);
+router.get("/getSummaries/:patientID/:doctorID", getSummaries);
+router.post("/addSummary", addSummary);
 router.post("/addNotes", addNotes);
 router.post("/createDoctor", createDoctor);
 router.post("/createPatient", createPatient);

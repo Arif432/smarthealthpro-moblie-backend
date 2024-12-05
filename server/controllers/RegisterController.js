@@ -26,9 +26,6 @@ const registerUser = async (req, res) => {
     specialization,
     cnic,
     address,
-    rating,
-    reviewCount,
-    numPatients,
     about,
     officeHours,
     education,
@@ -101,9 +98,6 @@ const registerUser = async (req, res) => {
           specialization,
           cnic,
           address,
-          rating,
-          reviewCount,
-          numPatients,
           about,
           officeHours,
           education,
@@ -827,45 +821,88 @@ const getMatchingNotes = async (req, res) => {
   }
 };
 
-const getSummariesByPatientId = async (req, res) => {
-  const { patientId } = req.params;
+// Function to fetch summary by patientID and doctorID
+const getSummaries = async (req, res) => {
+  const { patientID, doctorID } = req.params;
+
+  if (!patientID || !doctorID) {
+    return res.status(400).json({
+      message: "Missing required parameters: patientID and doctorID",
+    });
+  }
 
   try {
-    // Validate if the patientId is a valid MongoDB ObjectId
-    if (!mongoose.Types.ObjectId.isValid(patientId)) {
+    // Validate ObjectId if using it as type
+    if (
+      !mongoose.Types.ObjectId.isValid(patientID) ||
+      !mongoose.Types.ObjectId.isValid(doctorID)
+    ) {
       return res.status(400).json({
-        success: false,
-        message: "Invalid patient ID format",
+        message: "Invalid patientID or doctorID format",
       });
     }
 
-    // Find all summaries for the given patient ID
-    // Sort by date in descending order (newest first)
-    const summaries = await Summary.find({ patientID: patientId })
-      .sort({ date: -1 })
-      .lean(); // Use lean() for better performance since we don't need Mongoose document features
+    // Fetch the summary from the database
+    const summaries = await Summary.find({ patientID, doctorID }).sort({
+      date: -1,
+    });
 
-    // Check if any summaries were found
-    if (!summaries || summaries.length === 0) {
+    if (summaries.length === 0) {
       return res.status(404).json({
-        success: false,
-        message: "No summaries found for this patient",
+        message: "No summaries found for the given patient and doctor.",
       });
     }
 
-    // Return the summaries
-    res.status(200).json({
-      success: true,
-      count: summaries.length,
-      data: summaries,
+    res.status(200).json(summaries);
+  } catch (error) {
+    console.error("Error fetching summary:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while fetching the summary", error });
+  }
+};
+
+// Function to add a new summary
+const addSummary = async (req, res) => {
+  const { patientID, doctorID, summary } = req.body;
+
+  // Validate input data
+  if (!patientID || !doctorID || !summary) {
+    return res.status(400).json({
+      message: "Missing required fields: patientID, doctorID, or summary",
+    });
+  }
+
+  try {
+    // Validate ObjectId if using it as type
+    if (
+      !mongoose.Types.ObjectId.isValid(patientID) ||
+      !mongoose.Types.ObjectId.isValid(doctorID)
+    ) {
+      return res.status(400).json({
+        message: "Invalid patientID or doctorID format",
+      });
+    }
+
+    // Create a new summary document
+    const newSummary = new Summary({
+      patientID,
+      doctorID,
+      summary,
+    });
+
+    // Save the summary to the database
+    const savedSummary = await newSummary.save();
+
+    res.status(201).json({
+      message: "Summary added successfully",
+      data: savedSummary,
     });
   } catch (error) {
-    console.error("Error fetching patient summaries:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching patient summaries",
-      error: error.message,
-    });
+    console.error("Error adding summary:", error);
+    res
+      .status(500)
+      .json({ message: "An error occurred while adding the summary", error });
   }
 };
 
@@ -889,5 +926,6 @@ module.exports = {
   getAllPatients,
   addNotes,
   getMatchingNotes,
-  getSummariesByPatientId,
+  getSummaries,
+  addSummary,
 };

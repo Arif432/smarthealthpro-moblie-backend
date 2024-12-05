@@ -32,6 +32,8 @@ const notesSchema = new mongoose.Schema({
         message:
           "Avatar must be either a string or an object with public_id and url",
       },
+      default:
+        "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
     },
   },
   note: {
@@ -93,6 +95,14 @@ const DoctorSchema = new mongoose.Schema({
   cnic: {
     type: String,
     required: true,
+    unique: true,
+    validate: {
+      validator: function (v) {
+        return /^\d{5}-\d{7}-\d{1}$/.test(v);
+      },
+      message: (props) =>
+        `${props.value} is not a valid CNIC! Format should be: XXXXX-XXXXXXX-X`,
+    },
   },
   address: {
     type: String,

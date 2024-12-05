@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 
-const medicineSchema = new mongoose.Schema({
+const prescriptionSchema = new mongoose.Schema({
+  id: {
+    type: String,
+  },
   medication: {
     type: String,
     required: true,
@@ -26,7 +29,7 @@ const medicineSchema = new mongoose.Schema({
 const appointmentSchema = new mongoose.Schema({
   doctor: {
     id: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
       ref: "Doctor",
       required: true,
     },
@@ -46,7 +49,7 @@ const appointmentSchema = new mongoose.Schema({
   },
   patient: {
     id: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
       required: true,
     },
@@ -105,8 +108,8 @@ const appointmentSchema = new mongoose.Schema({
     required: true,
   },
   // Added medicines array
-  medicines: {
-    type: [medicineSchema],
+  prescription: {
+    type: [prescriptionSchema],
     default: [],
   },
 });
