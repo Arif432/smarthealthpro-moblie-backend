@@ -86,21 +86,22 @@ const io = require("socket.io")(http, {
   },
 });
 
+const userSocketMap = {};
+
 app.set("io", io);
+app.set("userSocketMap", userSocketMap);
 
 // Add error handling for Socket.IO connections
 io.on("connect_error", (err) => {
   console.log(`Connect error due to ${err.message}`);
 });
 
-const userSocketMap = {};
-
 io.on("connection", (socket) => {
   console.log("A user is connected", socket.id);
 
   const userId = socket.handshake.query.userId;
 
-  if (userId !== "undefined") {
+  if (userId !== "undefined" && userId) {
     userSocketMap[userId] = socket.id;
   }
 
@@ -120,27 +121,111 @@ io.on("connection", (socket) => {
     });
 
     socket.join(room);
-    console.log(`User ${socket.id} joined room: ${room}`);
+    console.log(`User ${userId} joined room: ${room}`);
+
+    // Broadcast room join event
+    io.to(room).emit("userJoinedRoom", { userId, socketId: socket.id });
   });
 
-  socket.on("leaveRoom", (room) => {
-    socket.leave(room);
-    console.log(`User ${socket.id} left room: ${room}`);
-  });
-
-  socket.on("sendMessage", ({ newMessage, conversationId }) => {
+  socket.on("sendMessage", async ({ newMessage, conversationId }) => {
     if (!conversationId) {
       console.error("No conversationId provided for message");
       return;
     }
 
-    console.log(`User ${socket.id} sending message to room: ${conversationId}`);
-    console.log("Message:", newMessage);
-    console.log("Socket rooms:", socket.rooms);
+    const db = mongoose.connection.db;
+
+    // Get the participants from the conversation
+    const conversation = await db.collection("conversations").findOne({
+      _id: new ObjectId(conversationId),
+    });
+
+    if (!conversation) {
+      console.error("Conversation not found");
+      return;
+    }
+
+    const receiverId = conversation.participants.find(
+      (id) => id !== newMessage.sender
+    );
+
+    // Check if receiver is connected
+    const receiverSocketId = userSocketMap[receiverId];
+    const isReceiverOnline = !!receiverSocketId;
+
+    // Set initial read status
+    const messageReadStatus = {
+      [newMessage.sender]: true, // sender has read their message
+      [receiverId]: false, // initial receiver status
+    };
+
+    console.log(`User ${userId} sending message to room: ${conversationId}`);
+
+    // Get all socket IDs in the room
+    const roomSockets = io.sockets.adapter.rooms.get(conversationId);
+    console.log(
+      "Sockets in room:",
+      roomSockets ? Array.from(roomSockets) : "No sockets"
+    );
+
+    if (roomSockets && receiverSocketId) {
+      const isReceiverInRoom = roomSockets.has(receiverSocketId);
+      if (isReceiverInRoom) {
+        messageReadStatus[receiverId] = true;
+      }
+    }
+
+    const messageStatus = isReceiverOnline ? "delivered" : "sent";
+
+    await db.collection("messages").updateOne(
+      { _id: new ObjectId(newMessage._id) },
+      {
+        $set: {
+          readStatus: messageReadStatus,
+          status: messageStatus,
+          updatedAt: new Date(),
+        },
+      }
+    );
 
     io.to(conversationId).emit("newMessage", {
       ...newMessage,
-      conversationId,
+      readStatus: messageReadStatus,
+      status: messageStatus,
+    });
+  });
+
+  socket.on("messageRead", async ({ messageId, conversationId, userId }) => {
+    const db = mongoose.connection.db;
+
+    // First fetch the current message to get existing readStatus
+    const message = await db
+      .collection("messages")
+      .findOne({ _id: new ObjectId(messageId) });
+
+    const updatedReadStatus = {
+      ...message.readStatus,
+      [userId]: true,
+    };
+
+    // Update message read status in database
+    await db.collection("messages").updateOne(
+      { _id: new ObjectId(messageId) },
+      {
+        $set: {
+          readStatus: updatedReadStatus,
+          status: "read",
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    // Emit to all users in the conversation
+    io.to(conversationId).emit("messageRead", {
+      messageId,
+      userId,
+      status: "read",
+      readStatus: updatedReadStatus,
     });
   });
 });
@@ -279,6 +364,11 @@ app.post("/conversations", async (req, res) => {
         updatedAt: new Date(),
         avatar: [currentUserObjectIdAvatar, otherUserObjectIdAvatar],
         name: [currentUserObjectIdName, otherUserObjectIdName],
+        unreadCount: { [currentUserId]: 0, [otherUserId]: 0 },
+        lastReadTimestamp: {
+          [currentUserId]: new Date(),
+          [otherUserId]: new Date(),
+        },
       };
 
       const result = await collection.insertOne(newConversation);
@@ -315,6 +405,12 @@ app.get("/conversations/getOrCreate/:doctorId/:patientId", async (req, res) => {
         participants: [doctorId, patientId],
         lastMessage: null,
         updatedAt: new Date(),
+        unreadCount: { [doctorId]: 0, [patientId]: 0 }, // Add this
+        lastReadTimestamp: {
+          // And this
+          [doctorId]: new Date(),
+          [patientId]: new Date(),
+        },
       });
 
       const savedConversation = await newConversation.save();
@@ -341,12 +437,13 @@ app.get("/conversations/:userId", async (req, res) => {
       })
       .toArray();
 
-    const conversationsWithStringId = conversations.map((convo) => ({
+    const conversationsWithUnread = conversations.map((convo) => ({
       ...convo,
       _id: convo._id.toString(),
+      unreadCount: convo.unreadCount?.[userId] || 0,
     }));
 
-    res.status(200).json(conversationsWithStringId);
+    res.status(200).json(conversationsWithUnread);
   } catch (error) {
     console.error("Error fetching conversations:", error);
     res
@@ -420,44 +517,143 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
   try {
     const { content, sender, fileInfo } = req.body;
     const conversationId = req.params.conversationId;
+    const io = req.app.get("io");
 
-    if (!content && !fileInfo) {
-      return res.status(400).json({ error: "Message content is required" });
+    // Add debug logging
+    console.log("Received message request:", {
+      content,
+      sender,
+      fileInfo,
+      conversationId,
+    });
+
+    // Input validation
+    if (!conversationId) {
+      return res.status(400).json({ error: "Conversation ID is required" });
     }
 
+    if (!content && !fileInfo) {
+      return res
+        .status(400)
+        .json({ error: "Message content or file info is required" });
+    }
+
+    if (!sender) {
+      return res.status(400).json({ error: "Sender ID is required" });
+    }
+
+    const db = mongoose.connection.db;
+    const conversation = await db.collection("conversations").findOne({
+      _id: new ObjectId(conversationId),
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: "Conversation not found" });
+    }
+
+    const receiverId = conversation.participants.find((id) => id !== sender);
+
+    // Prepare new message object with proper initialization
     const newMessage = {
       conversationId,
       content: content || "File shared",
       sender,
       timestamp: new Date(),
       fileInfo: fileInfo || null,
+      readStatus: {
+        [sender]: true,
+        [receiverId]: false,
+      },
+      status: "sent", // Initial status
     };
 
-    const db = mongoose.connection.db;
+    // Debug log the message before insertion
+    console.log("Attempting to insert message:", newMessage);
+
     const result = await db.collection("messages").insertOne(newMessage);
 
-    if (result.insertedId) {
-      const insertedMessage = {
-        _id: result.insertedId.toString(),
-        ...newMessage,
-      };
-
-      const io = req.app.get("io");
-      if (io) {
-        io.to(conversationId).emit("newMessage", insertedMessage);
-      } else {
-        console.error("Socket.IO instance not found");
-      }
-
-      res.status(201).json(insertedMessage);
-    } else {
-      res.status(500).json({ error: "Failed to insert message" });
+    if (!result.insertedId) {
+      console.error("Failed to insert message - no insertedId returned");
+      return res.status(500).json({ error: "Failed to insert message" });
     }
+
+    // Get user socket info
+    const userSocketMap = req.app.get("userSocketMap") || {};
+    const receiverSocketId = userSocketMap[receiverId];
+    const isReceiverOnline = !!receiverSocketId;
+
+    // Update message status based on receiver online status
+    const messageStatus = isReceiverOnline ? "delivered" : "sent";
+
+    // Update the message with final status
+    await db.collection("messages").updateOne(
+      { _id: result.insertedId },
+      {
+        $set: {
+          status: messageStatus,
+        },
+      }
+    );
+
+    const insertedMessage = {
+      _id: result.insertedId.toString(),
+      ...newMessage,
+      status: messageStatus,
+    };
+
+    if (io) {
+      io.to(conversationId).emit("newMessage", insertedMessage);
+    }
+
+    // Update unread count and last message
+    await db.collection("conversations").updateOne(
+      { _id: new ObjectId(conversationId) },
+      {
+        $set: {
+          lastMessage: content || "File shared",
+          updatedAt: new Date(),
+          [`unreadCount.${receiverId}`]:
+            (conversation.unreadCount?.[receiverId] || 0) + 1,
+        },
+      }
+    );
+
+    return res.status(201).json(insertedMessage);
   } catch (error) {
-    console.error("Error sending message:", error);
-    res.status(500).json({ error: "Error sending message" });
+    console.error("Message insertion error:", error);
+    return res.status(500).json({
+      error: "Internal server error",
+      message: error.message,
+    });
   }
 });
+
+app.post(
+  "/conversations/:conversationId/mark-messages-read",
+  async (req, res) => {
+    try {
+      const { conversationId, userId } = req.body;
+      const db = mongoose.connection.db;
+
+      // Update all unread messages in this conversation for this user
+      await db.collection("messages").updateMany(
+        {
+          conversationId,
+          "readStatus.receiver": false,
+          sender: { $ne: userId },
+        },
+        {
+          $set: { "readStatus.receiver": true },
+        }
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error marking messages as read:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
 
 app.put("/conversations/:id/lastMessage", async (req, res) => {
   try {
@@ -551,23 +747,22 @@ router.post("/send-notification", async (req, res) => {
       .status(400)
       .json({ success: false, message: "Missing required fields" });
   }
+
+  // Send response immediately
+  res.json({ success: true, message: "Notification queued" });
+
+  // Process notification asynchronously
   try {
     const result = await sendNotificationToUser(receiverId, title, body);
-    res.json({
+    console.log("Notification sent:", {
       success: true,
-      message: "Notification process completed",
       result: {
         successCount: result.successCount,
         failureCount: result.failureCount,
       },
     });
   } catch (error) {
-    console.error("Error in send-notification route:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error sending notification",
-      error: error.message,
-    });
+    console.error("Error in send-notification:", error);
   }
 });
 
@@ -653,6 +848,29 @@ app.get("/check-conversation/:userId1/:userId2", async (req, res) => {
   } catch (error) {
     console.error("Error checking conversation:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Add this to your server.js
+app.post("/conversations/:conversationId/read/:userId", async (req, res) => {
+  try {
+    const { conversationId, userId } = req.params;
+    const db = mongoose.connection.db; // Add this line
+    const collection = db.collection("conversations");
+
+    await collection.updateOne(
+      { _id: new ObjectId(conversationId) },
+      {
+        $set: {
+          [`unreadCount.${userId}`]: 0,
+          [`lastReadTimestamp.${userId}`]: new Date(),
+        },
+      }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

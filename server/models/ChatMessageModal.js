@@ -94,6 +94,16 @@ const conversationSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
   avatar: [mongoose.Schema.Types.ObjectId],
   name: [mongoose.Schema.Types.ObjectId],
+  unreadCount: {
+    type: Map, // Using Map to store unread count for each participant
+    of: Number,
+    default: new Map(),
+  },
+  lastReadTimestamp: {
+    type: Map, // Store last read timestamp for each participant
+    of: Date,
+    default: new Map(),
+  },
 });
 
 // Create the Message model
