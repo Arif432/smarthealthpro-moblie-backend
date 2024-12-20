@@ -4,7 +4,6 @@ const router = express.Router();
 const {
   registerUser,
   loginUser,
-  verifyUser,
   updateUser,
   deleteUser,
   forgotPassword,
@@ -23,8 +22,13 @@ const {
   getMatchingNotes,
   getSummaries,
   addSummary,
+  createAdmin,
+  loginAdmin,
+  getPendingDoctors,
+  handleDoctorApproval,
 } = require("../controllers/RegisterController");
 const { singlePic } = require("../../middle/multer");
+const verifyAdmin = require("../middleware/verifyAdmin");
 
 router.post("/register", registerUser);
 router.post("/login", loginUser);
@@ -55,5 +59,10 @@ router.post("/createPatient", createPatient);
 router.put("/updateDoctorInfo/:id", updateDoctorInfo);
 router.post("/updatePassword", updatePassword);
 router.put("/updateProfile", singlePic, updateProfilePic);
+
+router.post("/admin/login", loginAdmin);
+router.post("/admin/signup", createAdmin);
+router.get("/admin/pendingDoctors", getPendingDoctors);
+router.post("/admin/doctorApproval", handleDoctorApproval);
 
 module.exports = router;

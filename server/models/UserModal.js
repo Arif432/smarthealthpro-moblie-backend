@@ -163,12 +163,113 @@ const PatientSchema = new mongoose.Schema({
   // Add other patient-specific fields here
 });
 
+const AdminSchema = new mongoose.Schema({
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
+});
+
+const PendingDoctorSchema = new mongoose.Schema({
+  // Basic user info
+  userName: {
+    type: String,
+    required: true,
+  },
+  fullName: {
+    type: String,
+    required: true,
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  password: {
+    type: String,
+    required: true,
+    minlength: 6,
+  },
+  avatar: {
+    public_id: {
+      type: String,
+    },
+    url: {
+      type: String,
+    },
+  },
+
+  // Doctor specific info
+  specialization: {
+    type: String,
+    required: true,
+  },
+  cnic: {
+    type: String,
+    required: true,
+    unique: true,
+    validate: {
+      validator: function (v) {
+        return /^\d{5}-\d{7}-\d{1}$/.test(v);
+      },
+      message: (props) =>
+        `${props.value} is not a valid CNIC! Format should be: XXXXX-XXXXXXX-X`,
+    },
+  },
+  address: {
+    type: String,
+    required: true,
+  },
+  about: {
+    type: String,
+    required: true,
+  },
+  officeHours: {
+    monday: { type: String, required: true },
+    tuesday: { type: String, required: true },
+    wednesday: { type: String, required: true },
+    thursday: { type: String, required: true },
+    friday: { type: String, required: true },
+    saturday: { type: String, required: false },
+    sunday: { type: String, required: false },
+  },
+  education: [
+    {
+      degree: { type: String, required: true },
+      institution: { type: String, required: true },
+      year: { type: String, required: true },
+    },
+  ],
+  status: {
+    type: String,
+    enum: ["pending", "approved", "rejected"],
+    default: "pending",
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+const PendingDoctorModel = mongoose.model(
+  "PendingDoctor",
+  PendingDoctorSchema,
+  "pendingDoctors"
+);
 const UserModel = mongoose.model("User", UserSchema);
 const DoctorModel = mongoose.model("Doctor", DoctorSchema);
 const PatientModel = mongoose.model("Patient", PatientSchema);
+const AdminModel = mongoose.model("Admin", AdminSchema);
 
 module.exports = {
   User: UserModel,
   Doctor: DoctorModel,
   Patient: PatientModel,
+  Admin: AdminModel,
+  PendingDoctor: PendingDoctorModel,
 };

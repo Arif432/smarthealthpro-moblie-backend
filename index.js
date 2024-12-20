@@ -17,6 +17,7 @@ const fs = require("fs");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const crypto = require("crypto");
+const { encrypt, decrypt } = require("./encrypt");
 
 require("dotenv").config();
 
@@ -875,10 +876,17 @@ app.post("/conversations/:conversationId/read/:userId", async (req, res) => {
 });
 
 // CNIC Check Route
-router.get("/check-cnic/:cnic", async (req, res) => {
+// Modified CNIC check route to handle encrypted CNICs
+router.get("/check-cnic/:encryptedCnic", async (req, res) => {
   try {
-    const { cnic } = req.params;
-    const existingDoctor = await Doctor.findOne({ cnic });
+    const { encryptedCnic } = req.params;
+
+    // Encrypt the incoming CNIC for comparison
+    const encryptedValue = encrypt(decrypt(encryptedCnic)); // Re-encrypt after decryption to match stored format
+
+    const existingDoctor = await Doctor.findOne({
+      cnic: encryptedValue,
+    });
 
     if (existingDoctor) {
       return res.status(400).json({

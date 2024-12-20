@@ -1,7 +1,13 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const { User, Doctor, Patient } = require("../models/UserModal");
+const {
+  User,
+  Doctor,
+  Patient,
+  Admin,
+  PendingDoctor,
+} = require("../models/UserModal");
 const { getURI } = require("../../utils/features");
 const { sendMail } = require("../../utils/nodemailerConfig");
 const { ObjectId } = mongoose.Types;
@@ -13,7 +19,7 @@ const Summary = require("../models/Summary");
 const JWT_SECRET = "your-hardcoded-secret-key";
 
 const registerUser = async (req, res) => {
-  console.log("Request body:", req.body); // Log the incoming request body
+  console.log("Request body:", req.body);
 
   const {
     fullName,
@@ -32,28 +38,16 @@ const registerUser = async (req, res) => {
   } = req.body;
 
   try {
-    // Check for required fields only for patients
-    if (role === "patient" && (!dateOfBirth || !bloodType)) {
-      return res
-        .status(400)
-        .json({ message: "Missing required fields for patient" });
-    }
-
     // Generate a base username from the name
     let userName = fullName.replace(/\s+/g, "").toLowerCase();
     let uniqueUserName = userName;
     let counter = 1;
 
-    // Check if username already exists and generate a unique username
-    while (await User.findOne({ userName: uniqueUserName })) {
-      uniqueUserName = `${userName}${counter}`;
-      counter++;
-    }
-
-    // Check if email already exists
-    const existingEmail = await User.findOne({ email });
-    if (existingEmail) {
-      return res.status(400).json({ error: "Email already exists" });
+    // Check for required fields only for patients
+    if (role === "patient" && (!dateOfBirth || !bloodType)) {
+      return res
+        .status(400)
+        .json({ message: "Missing required fields for patient" });
     }
 
     // Check password length
@@ -66,63 +60,79 @@ const registerUser = async (req, res) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create the user
-    const user = await User.create({
-      userName: uniqueUserName,
-      fullName,
-      email,
-      password: hashedPassword,
-      role,
-    });
+    // Different flow for doctors vs patients
+    if (role === "doctor") {
+      // Check if email or CNIC already exists in any collection
+      const existingUser = await User.findOne({ email });
+      const existingPending = await PendingDoctor.findOne({
+        $or: [{ email }, { cnic }],
+      });
+      const existingDoctor = await Doctor.findOne({ cnic });
 
-    console.log("User role:", role); // Log the user role
+      if (existingUser || existingPending || existingDoctor) {
+        return res.status(400).json({
+          message: "Email or CNIC already registered or pending approval",
+        });
+      }
 
-    // Create the patient record if role is 'patient'
-    let newRecord = null;
-    if (role === "patient") {
-      newRecord = await Patient.create({
-        user: user._id, // Link the patient record to the user's ID
-        dateOfBirth,
-        bloodType,
+      // Create pending doctor document
+      const pendingDoctor = new PendingDoctor({
+        userName: uniqueUserName,
+        fullName,
+        email,
+        password: hashedPassword,
+        avatar,
+        specialization,
+        cnic,
+        address,
+        about,
+        officeHours,
+        education,
+        status: "pending",
+      });
+
+      await pendingDoctor.save();
+
+      return res.status(201).json({
+        message: "Doctor registration pending admin approval",
       });
     }
 
-    // Create the doctor record if role is 'doctor'
-    if (role === "doctor") {
-      try {
-        newRecord = await Doctor.create({
-          user: user._id, // Link the doctor record to the user's ID
-          userName: uniqueUserName,
-          fullName,
-          email,
-          specialization,
-          cnic,
-          address,
-          about,
-          officeHours,
-          education,
-          avatar,
-        });
-      } catch (error) {
-        console.error("Error creating doctor record:", error); // Log error details
-        return res
-          .status(500)
-          .json({ error: "Failed to create doctor record." });
+    // Patient registration flow
+    else if (role === "patient") {
+      // Check if email already exists
+      const existingEmail = await User.findOne({ email });
+      if (existingEmail) {
+        return res.status(400).json({ error: "Email already exists" });
       }
+
+      // Create the user for patient
+      const user = await User.create({
+        userName: uniqueUserName,
+        fullName,
+        email,
+        password: hashedPassword,
+        role: "patient",
+      });
+
+      // Create the patient record
+      await Patient.create({
+        user: user._id,
+        dateOfBirth,
+        bloodType,
+      });
+
+      return res
+        .status(201)
+        .json({ message: "Patient registered successfully" });
     }
 
-    // Send a single response after both user and record are created
-    res.status(201).json({
-      message: "User and record created successfully",
-      user: user._id,
-      record: newRecord ? newRecord._id : null,
-    });
+    return res.status(400).json({ message: "Invalid role specified" });
   } catch (error) {
-    // Handle specific database errors
+    console.error("Registration error:", error);
     if (error.code === 11000) {
       return res.status(400).json({ error: "Email already exists" });
     }
-    // Handle other server errors
     res.status(500).json({ error: error.message });
   }
 };
@@ -500,8 +510,21 @@ const getDoctorsBySatisfaction = async (req, res) => {
 
 const getAllDoctors = async (req, res) => {
   try {
-    const doctors = await Doctor.find({});
-    res.status(200).json(doctors);
+    const doctors = await Doctor.find({}).populate("user");
+
+    const doctorsWithUser = doctors
+      .filter((doctor) => doctor.user)
+      .map((doctor) => {
+        const userObj = doctor.user.toObject();
+        const doctorObj = doctor.toObject();
+
+        return {
+          ...doctorObj,
+          user: userObj,
+        };
+      });
+
+    res.status(200).json(doctorsWithUser);
   } catch (error) {
     res.status(500).json({ error: "Error fetching doctors." });
   }
@@ -906,6 +929,122 @@ const addSummary = async (req, res) => {
   }
 };
 
+const createAdmin = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    // Check if admin exists
+    const existingAdmin = await Admin.findOne({ email });
+    if (existingAdmin) {
+      return res.status(400).json({ error: "Admin already exists" });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create admin
+    const admin = await Admin.create({
+      email,
+      password: hashedPassword,
+    });
+
+    res.status(201).json({
+      message: "Admin created successfully",
+      adminId: admin._id,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const loginAdmin = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    // Find admin
+    const admin = await Admin.findOne({ email });
+    if (!admin) {
+      return res.status(404).json({ error: "Admin not found" });
+    }
+
+    // Check password
+    const isPasswordValid = await bcrypt.compare(password, admin.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid password" });
+    }
+
+    res.status(200).json({
+      admin: {
+        id: admin._id,
+        email: admin.email,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const handleDoctorApproval = async (req, res) => {
+  try {
+    const { doctorId, action } = req.body;
+
+    const pendingDoctor = await PendingDoctor.findById(doctorId);
+    if (!pendingDoctor) {
+      return res.status(404).json({ message: "Pending doctor not found" });
+    }
+
+    if (action === "approve") {
+      // Create new user
+      const user = new User({
+        userName: pendingDoctor.userName,
+        fullName: pendingDoctor.fullName,
+        email: pendingDoctor.email,
+        password: pendingDoctor.password, // Already hashed
+        role: "doctor",
+        avatar: pendingDoctor.avatar,
+      });
+      await user.save();
+
+      // Create doctor profile
+      const doctor = new Doctor({
+        user: user._id,
+        specialization: pendingDoctor.specialization,
+        cnic: pendingDoctor.cnic,
+        address: pendingDoctor.address,
+        about: pendingDoctor.about,
+        officeHours: pendingDoctor.officeHours,
+        education: pendingDoctor.education,
+      });
+      await doctor.save();
+
+      // Delete the pending doctor entry
+      await PendingDoctor.findByIdAndDelete(doctorId);
+
+      res.status(200).json({ message: "Doctor approved successfully" });
+    } else if (action === "reject") {
+      // Delete the pending doctor entry
+      await PendingDoctor.findByIdAndDelete(doctorId);
+
+      res.status(200).json({ message: "Doctor rejected successfully" });
+    }
+  } catch (error) {
+    console.error("Approval error:", error);
+    res.status(500).json({ message: "Error processing doctor approval" });
+  }
+};
+
+// Admin endpoint to get pending doctors
+const getPendingDoctors = async (req, res) => {
+  try {
+    const pendingDoctors = await PendingDoctor.find({ status: "pending" })
+      .select("-password")
+      .sort({ createdAt: -1 });
+    res.status(200).json(pendingDoctors);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching pending doctors" });
+  }
+};
+
 module.exports = {
   updateProfilePic,
   registerUser,
@@ -928,4 +1067,8 @@ module.exports = {
   getMatchingNotes,
   getSummaries,
   addSummary,
+  createAdmin,
+  loginAdmin,
+  handleDoctorApproval,
+  getPendingDoctors,
 };
