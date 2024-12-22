@@ -550,9 +550,12 @@ const deleteUser = async (req, res) => {
       // await Summary.deleteMany({
       //   patientID: { $in: [mongoose.Types.ObjectId(id), id] },
       // });
-      // await Appointment.deleteMany({
-      //   "patient.id": { $in: [mongoose.Types.ObjectId(id), id] },
-      // });
+      await Appointment.deleteMany({
+        $or: [
+          { "patient.id": { $in: [mongoose.Types.ObjectId(id), id] } },
+          { "doctor.id": { $in: [mongoose.Types.ObjectId(id), id] } },
+        ],
+      });
     }
 
     // await Message.deleteMany({
