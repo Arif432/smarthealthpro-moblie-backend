@@ -18,6 +18,7 @@ const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const crypto = require("crypto");
 const { encrypt, decrypt } = require("./encrypt");
+const onlineStatusHandler = require("./onlineStatusHandler");
 
 require("dotenv").config();
 
@@ -102,16 +103,13 @@ io.on("connection", (socket) => {
 
   const userId = socket.handshake.query.userId;
 
-  if (userId !== "undefined" && userId) {
+  if (userId && userId !== "undefined") {
+    console.log(`User ${userId} connected with socket ${socket.id}`);
     userSocketMap[userId] = socket.id;
+
+    // Handle online status through onlineStatusHandler
+    onlineStatusHandler.handleSocketConnection(io, socket);
   }
-
-  console.log("User socket data", userSocketMap);
-
-  socket.on("disconnect", () => {
-    console.log("User disconnected", socket.id);
-    delete userSocketMap[userId];
-  });
 
   socket.on("joinRoom", (room) => {
     // Leave all previous rooms
@@ -150,31 +148,14 @@ io.on("connection", (socket) => {
       (id) => id !== newMessage.sender
     );
 
-    // Check if receiver is connected
-    const receiverSocketId = userSocketMap[receiverId];
-    const isReceiverOnline = !!receiverSocketId;
+    // Check if receiver is online using onlineStatusHandler
+    const isReceiverOnline = onlineStatusHandler.isUserOnline(receiverId);
 
     // Set initial read status
     const messageReadStatus = {
-      [newMessage.sender]: true, // sender has read their message
-      [receiverId]: false, // initial receiver status
+      [newMessage.sender]: true,
+      [receiverId]: false,
     };
-
-    console.log(`User ${userId} sending message to room: ${conversationId}`);
-
-    // Get all socket IDs in the room
-    const roomSockets = io.sockets.adapter.rooms.get(conversationId);
-    console.log(
-      "Sockets in room:",
-      roomSockets ? Array.from(roomSockets) : "No sockets"
-    );
-
-    if (roomSockets && receiverSocketId) {
-      const isReceiverInRoom = roomSockets.has(receiverSocketId);
-      if (isReceiverInRoom) {
-        messageReadStatus[receiverId] = true;
-      }
-    }
 
     const messageStatus = isReceiverOnline ? "delivered" : "sent";
 
@@ -198,8 +179,6 @@ io.on("connection", (socket) => {
 
   socket.on("messageRead", async ({ messageId, conversationId, userId }) => {
     const db = mongoose.connection.db;
-
-    // First fetch the current message to get existing readStatus
     const message = await db
       .collection("messages")
       .findOne({ _id: new ObjectId(messageId) });
@@ -209,7 +188,6 @@ io.on("connection", (socket) => {
       [userId]: true,
     };
 
-    // Update message read status in database
     await db.collection("messages").updateOne(
       { _id: new ObjectId(messageId) },
       {
@@ -221,7 +199,6 @@ io.on("connection", (socket) => {
       }
     );
 
-    // Emit to all users in the conversation
     io.to(conversationId).emit("messageRead", {
       messageId,
       userId,
@@ -905,6 +882,29 @@ router.get("/check-cnic/:encryptedCnic", async (req, res) => {
       success: false,
       message: "Internal server error",
     });
+  }
+});
+
+// Get all online users
+app.get("/online-users", (req, res) => {
+  try {
+    const onlineUsers = onlineStatusHandler.getOnlineUsers();
+    res.json({ success: true, onlineUsers });
+  } catch (error) {
+    console.error("Error fetching online users:", error);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+// Check if a specific user is online
+app.get("/user-status/:userId", (req, res) => {
+  try {
+    const { userId } = req.params;
+    const isOnline = onlineStatusHandler.isUserOnline(userId);
+    res.json({ success: true, userId, isOnline });
+  } catch (error) {
+    console.error("Error checking user status:", error);
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
 
