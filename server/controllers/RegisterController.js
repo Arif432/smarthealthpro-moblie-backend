@@ -539,38 +539,48 @@ const deleteUser = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    console.log("User ID to be deleted:", id);
+    console.log("User details:", user);
+
     if (user.role === "doctor") {
-      await Doctor.findOneAndDelete({ user: id });
+      await Doctor.findOneAndDelete({ user: new ObjectId(id) });
       // await Appointment.deleteMany({
-      //   "doctor.id": { $in: [mongoose.Types.ObjectId(id), id] },
+      //   "doctor.id": { $in: [new ObjectId(id), id] },
       // });
     } else if (user.role === "patient") {
-      await Patient.findOneAndDelete({ user: id });
+      await Patient.findOneAndDelete({ user: new ObjectId(id) });
 
       // await Summary.deleteMany({
-      //   patientID: { $in: [mongoose.Types.ObjectId(id), id] },
+      //   patientID: { $in: [new ObjectId(id), id] },
       // });
       await Appointment.deleteMany({
         $or: [
-          { "patient.id": { $in: [mongoose.Types.ObjectId(id), id] } },
-          { "doctor.id": { $in: [mongoose.Types.ObjectId(id), id] } },
+          { "patient.id": { $in: [new ObjectId(id), id] } },
+          { "doctor.id": { $in: [new ObjectId(id), id] } },
         ],
       });
     }
 
     // await Message.deleteMany({
     //   sender: {
-    //     $in: [mongoose.Types.ObjectId(id), id]  // Handles both ObjectId and string formats
+    //     $in: [new ObjectId(id), id]  // Handles both ObjectId and string formats
     //   }
     // });
     // await Conversation.deleteMany({
     //   participants: {
-    //     $in: [mongoose.Types.ObjectId(id), id],  // Handles both ObjectId and string formats
+    //     $in: [new ObjectId(id), id],  // Handles both ObjectId and string formats
     //   },
     // });
-    await User.findByIdAndDelete(id);
+
+    const deleteResult = await User.deleteOne({ _id: new ObjectId(id) });
+    if (deleteResult.deletedCount === 0) {
+      throw new Error("Failed to delete user");
+    }
+    console.log("Deleted user:", deleteResult); // Check user deletion
+
     res.status(200).json({ msg: "User deleted successfully" });
   } catch (error) {
+    console.error("Error deleting user:", error);
     res.status(500).json({ error: "Error deleting user." });
   }
 };
@@ -614,7 +624,6 @@ updatePassword = async (req, res) => {
 };
 
 const updateProfilePic = async (req, res) => {
-  console.log("Sdsdsd");
   try {
     console.log("User ID and File:", req.body.id, req.file); // For debugging
 
