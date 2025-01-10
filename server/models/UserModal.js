@@ -96,13 +96,6 @@ const DoctorSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    validate: {
-      validator: function (v) {
-        return /^\d{5}-\d{7}-\d{1}$/.test(v);
-      },
-      message: (props) =>
-        `${props.value} is not a valid CNIC! Format should be: XXXXX-XXXXXXX-X`,
-    },
   },
   address: {
     type: String,
@@ -213,13 +206,6 @@ const PendingDoctorSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    validate: {
-      validator: function (v) {
-        return /^\d{5}-\d{7}-\d{1}$/.test(v);
-      },
-      message: (props) =>
-        `${props.value} is not a valid CNIC! Format should be: XXXXX-XXXXXXX-X`,
-    },
   },
   address: {
     type: String,

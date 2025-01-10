@@ -26,6 +26,9 @@ const handleSocketConnection = (io, socket) => {
     }
   };
 
+  // Log all online users whenever there's a change
+  console.log("Current online users:", Array.from(onlineUsers.entries()));
+
   const handleUserDisconnect = () => {
     if (userId && userId !== "undefined") {
       console.log(`User ${userId} went offline from socket ${socket.id}`);
