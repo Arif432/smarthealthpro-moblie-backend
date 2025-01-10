@@ -76,6 +76,8 @@ const UserSchema = new mongoose.Schema({
     url: {
       type: String,
     },
+    default:
+      "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
   },
   devices: [userDeviceSchema],
   notes: [notesSchema],
@@ -191,9 +193,12 @@ const PendingDoctorSchema = new mongoose.Schema({
   avatar: {
     public_id: {
       type: String,
+      default: "",
     },
     url: {
       type: String,
+      default:
+        "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
     },
   },
 
