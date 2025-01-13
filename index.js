@@ -19,6 +19,7 @@ const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const crypto = require("crypto");
 const { encrypt, decrypt } = require("./encrypt");
 const onlineStatusHandler = require("./onlineStatusHandler");
+require("./server/controllers/AppointmentController"); // Ensure this line is present
 
 require("dotenv").config();
 

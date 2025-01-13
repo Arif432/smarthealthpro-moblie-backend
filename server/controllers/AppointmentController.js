@@ -2,6 +2,7 @@ const Appointment = require("../models/AppointmentModal");
 const mongoose = require("mongoose");
 const moment = require("moment");
 const { Doctor } = require("../models/UserModal");
+const cron = require("node-cron");
 
 // Helper functions remain unchanged
 const findDoctorById = async (doctorId) => {
@@ -259,6 +260,89 @@ const scheduleAppointments = async (req, res) => {
     });
   }
 };
+
+const scheduleAppointmentsBackground = async (day) => {
+  try {
+    const appointments = await Appointment.find({ appointmentStatus: "tbd" });
+    const targetDate = moment().day(day).startOf("day");
+
+    // If no appointments, just return early
+    if (!appointments.length) {
+      console.log("No appointments to schedule");
+      return;
+    }
+
+    const patients = appointments.map((appointment) => ({
+      id: appointment._id,
+      priority: appointment.priority,
+      booking_time: moment(appointment.bookedOn).format("hh:mm A"),
+      booking_day: moment(appointment.bookedOn).format("dddd").toLowerCase(),
+      doctorId: appointment.doctor.id,
+      appointment,
+    }));
+
+    const firstPatient = patients[0];
+    const time_slots = generateTimeSlots(firstPatient.doctorId.toString(), day);
+    const sorted_patients = sortPatients(patients);
+    const { assigned_appointments, waiting_list } = assignTimeSlots(
+      time_slots,
+      sorted_patients
+    );
+
+    const updatedAppointments = await Promise.all(
+      assigned_appointments.map(async (a) => {
+        const updateFields = {
+          date: targetDate.format("YYYY-MM-DD"),
+          time: a.assigned_slot.start,
+          appointmentStatus: "pending",
+        };
+
+        const updatedAppointment = await Appointment.findByIdAndUpdate(
+          a.appointment._id,
+          { $set: updateFields },
+          { new: true }
+        );
+
+        return {
+          appointment: updatedAppointment,
+          assigned_slot: {
+            start: moment(
+              `${targetDate.format("YYYY-MM-DD")} ${a.assigned_slot.start}`,
+              "YYYY-MM-DD hh:mm A"
+            ).toISOString(),
+            end: moment(
+              `${targetDate.format("YYYY-MM-DD")} ${a.assigned_slot.end}`,
+              "YYYY-MM-DD hh:mm A"
+            ).toISOString(),
+          },
+        };
+      })
+    );
+
+    console.log(
+      `Appointments scheduled successfully for ${day}. ${updatedAppointments.length} appointments updated in database.`
+    );
+    console.log(`Waiting list contains ${waiting_list.length} appointments`);
+
+    return {
+      assigned_appointments: updatedAppointments,
+      waiting_list: waiting_list.map((w) => ({ appointment: w.appointment })),
+    };
+  } catch (error) {
+    console.error("Error in scheduleAppointmentsBackground:", error);
+    // You might want to add some error notification system here
+  }
+};
+
+// Schedule the scheduleAppointments function to run every 24 hours
+cron.schedule("0 0 * * *", () => {
+  const day = moment().format("dddd").toLowerCase();
+  scheduleAppointmentsBackground(day)
+    .then(() => console.log(`Completed scheduling appointments for ${day}`))
+    .catch((error) =>
+      console.error(`Failed to schedule appointments: ${error}`)
+    );
+});
 
 const addPrescriptionToAppointment = async (req, res) => {
   try {
