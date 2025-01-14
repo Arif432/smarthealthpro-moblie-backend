@@ -82,6 +82,8 @@ const UserSchema = new mongoose.Schema({
   },
   devices: [userDeviceSchema],
   notes: [notesSchema],
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
 });
 
 // Doctor Schema

@@ -60,6 +60,13 @@ const registerUser = async (req, res) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    if (role === "patient") {
+      sendMail(
+        email,
+        "Welcome to Smart Health Pro",
+        `Welcome to Smart Health Pro, ${fullName}! We're excited to have you on board.`
+      );
+    }
     // Different flow for doctors vs patients
     if (role === "doctor") {
       // Check if email or CNIC already exists in any collection
@@ -199,14 +206,18 @@ const forgotPassword = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
     const token = jwt.sign({ _id: user._id }, JWT_SECRET, {
-      expiresIn: "1h",
+      expiresIn: "5m",
     });
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+    await user.save();
+
     const link = `http://localhost:3000/user/reset-password/${user._id}/${token}`;
     sendMail(
       email,
       "Reset Password",
       "Reset Password",
-      `Please click on the given link to reset your password <a href="${link}">Change Password</a>`
+      `Please click on the given link to reset your password <a href="${link}">Change Password</a> '\n 'The link will expire in 5 minutes.`
     );
     res.status(200).json({ msg: "Password reset link sent to email", link });
   } catch (error) {
@@ -218,12 +229,19 @@ const resetPassword = async (req, res) => {
   const { userId, token } = req.params;
   const { password } = req.body;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded._id !== userId) {
-      return res.status(400).json({ error: "Invalid token" });
+    const user = await User.findOne({
+      _id: userId,
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+    if (!user) {
+      return res.status(400).json({ error: "Invalid or expired token" });
     }
     const hashedPassword = await bcrypt.hash(password, 10);
-    await User.findByIdAndUpdate(userId, { password: hashedPassword });
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
     res.status(200).json({ msg: "Password updated successfully" });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -305,13 +323,11 @@ const updateUser = async (req, res) => {
   const { id } = req.params;
   const {
     fullName,
-    email,
     password,
     avatar,
     role,
     specialization,
     officeHours,
-    cnic,
     address,
     rating,
     reviewCount,
@@ -334,7 +350,6 @@ const updateUser = async (req, res) => {
     // Update user fields
     const updateFields = {};
     if (fullName) updateFields.fullName = fullName;
-    if (email) updateFields.email = email;
     if (avatar) updateFields.avatar = avatar;
     if (password) {
       updateFields.password = await bcrypt.hash(password, 10);
@@ -1029,6 +1044,11 @@ const handleDoctorApproval = async (req, res) => {
       });
       await doctor.save();
 
+      sendMail(
+        pendingDoctor.email,
+        "Approval",
+        `Congratulations, start your career as a doctor on Smart Health Pro`
+      );
       // Delete the pending doctor entry
       await PendingDoctor.findByIdAndDelete(doctorId);
 
@@ -1036,6 +1056,12 @@ const handleDoctorApproval = async (req, res) => {
     } else if (action === "reject") {
       // Delete the pending doctor entry
       await PendingDoctor.findByIdAndDelete(doctorId);
+
+      sendMail(
+        pendingDoctor.email,
+        "Rejected",
+        `Sorry, your application has been rejected`
+      );
 
       res.status(200).json({ message: "Doctor rejected successfully" });
     }
