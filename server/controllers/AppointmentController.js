@@ -1,8 +1,9 @@
 const Appointment = require("../models/AppointmentModal");
 const mongoose = require("mongoose");
 const moment = require("moment");
-const { Doctor } = require("../models/UserModal");
+const { Doctor, User } = require("../models/UserModal");
 const cron = require("node-cron");
+const { sendMail } = require("../../utils/nodemailerConfig");
 
 // Helper functions remain unchanged
 const findDoctorById = async (doctorId) => {
@@ -507,6 +508,54 @@ const updatePrescription = async (req, res) => {
   }
 };
 
+const cancelAppointment = async (req, res) => {
+  try {
+    const appointmentId = new mongoose.Types.ObjectId(req.params.id);
+    const appointment = await Appointment.findById(appointmentId);
+
+    if (!appointment) {
+      return res.status(404).json({ error: "Appointment not found" });
+    }
+
+    // Get patient and doctor user details to get their emails
+    const patientUser = await User.findById(appointment.patient.id);
+    const doctorUser = await User.findById(appointment.doctor.id);
+
+    if (!patientUser || !doctorUser) {
+      return res.status(404).json({ error: "Patient or Doctor not found" });
+    }
+
+    // Update appointment status to cancelled
+    appointment.appointmentStatus = "cancelled";
+    await appointment.save();
+
+    // Send email to patient
+    await sendMail(
+      patientUser.email,
+      "Appointment Cancelled",
+      `Dear ${patientUser.fullName},\n\nYour appointment scheduled with Dr. ${doctorUser.fullName} for ${appointment.date} at ${appointment.time} has been cancelled.\n\nBest regards,\nSmart Health Pro Team`
+    );
+
+    // Send email to doctor
+    await sendMail(
+      doctorUser.email,
+      "Appointment Cancelled",
+      `Dear Dr. ${doctorUser.fullName},\n\nThe appointment scheduled with patient ${patientUser.fullName} for ${appointment.date} at ${appointment.time} has been cancelled.\n\nBest regards,\nSmart Health Pro Team`
+    );
+
+    res.status(200).json({
+      message: "Appointment cancelled successfully and notifications sent",
+      appointment,
+    });
+  } catch (error) {
+    console.error("Error cancelling appointment:", error);
+    res.status(500).json({
+      error: "Error cancelling appointment",
+      details: error.message,
+    });
+  }
+};
+
 module.exports = {
   createAppointment,
   getAppointments,
@@ -519,4 +568,5 @@ module.exports = {
   addPrescriptionToAppointment,
   getPrescriptionByPatientId,
   updatePrescription,
+  cancelAppointment,
 };

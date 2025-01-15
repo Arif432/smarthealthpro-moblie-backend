@@ -14,6 +14,7 @@ const {
   addPrescriptionToAppointment,
   getPrescriptionByPatientId,
   updatePrescription,
+  cancelAppointment,
 } = require("../controllers/AppointmentController");
 
 // router.use(verifyUser);
@@ -31,5 +32,8 @@ router.post("/:id/prescription", addPrescriptionToAppointment);
 router.put("/updateAppointment/:id", updateAppointment);
 router.put("/:appointmentId/prescriptions/:prescriptionId", updatePrescription);
 router.delete("/deleteAppointment/:id", deleteAppointment);
+
+// Add the new cancel appointment route
+router.patch("/:id/cancel", cancelAppointment);
 
 module.exports = router;
