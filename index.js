@@ -559,10 +559,10 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
     // Get user socket info
     const userSocketMap = req.app.get("userSocketMap") || {};
     const receiverSocketId = userSocketMap[receiverId];
-    const isReceiverOnline = !!receiverSocketId;
+    const isReceiverCurrentlyOnline = !!receiverSocketId;
 
     // Update message status based on receiver online status
-    const messageStatus = isReceiverOnline ? "delivered" : "sent";
+    const messageStatus = isReceiverCurrentlyOnline ? "delivered" : "sent";
 
     // Update the message with final status
     await db.collection("messages").updateOne(
@@ -584,18 +584,34 @@ app.post("/conversations/:conversationId/messages", async (req, res) => {
       io.to(conversationId).emit("newMessage", insertedMessage);
     }
 
-    // Update unread count and last message
-    await db.collection("conversations").updateOne(
-      { _id: new ObjectId(conversationId) },
-      {
-        $set: {
-          lastMessage: content || "File shared",
-          updatedAt: new Date(),
-          [`unreadCount.${receiverId}`]:
-            (conversation.unreadCount?.[receiverId] || 0) + 1,
-        },
-      }
-    );
+    // Check if both users are online
+    const isSenderOnline = onlineStatusHandler.isUserOnline(newMessage.sender);
+    const isReceiverOnline = onlineStatusHandler.isUserOnline(receiverId);
+
+    // Update unread count and last message only if the receiver is offline
+    if (!isReceiverOnline) {
+      await db.collection("conversations").updateOne(
+        { _id: new ObjectId(conversationId) },
+        {
+          $set: {
+            lastMessage: content || "File shared",
+            updatedAt: new Date(),
+            [`unreadCount.${receiverId}`]:
+              (conversation.unreadCount?.[receiverId] || 0) + 1,
+          },
+        }
+      );
+    } else {
+      await db.collection("conversations").updateOne(
+        { _id: new ObjectId(conversationId) },
+        {
+          $set: {
+            lastMessage: content || "File shared",
+            updatedAt: new Date(),
+          },
+        }
+      );
+    }
 
     return res.status(201).json(insertedMessage);
   } catch (error) {
@@ -906,6 +922,25 @@ app.get("/user-status/:userId", (req, res) => {
   } catch (error) {
     console.error("Error checking user status:", error);
     res.status(500).json({ success: false, error: "Internal server error" });
+  }
+});
+
+// Cloudinary Configuration Check Route
+app.get("/check-cloudinary", async (req, res) => {
+  try {
+    const result = await cloudinary.api.ping();
+    res
+      .status(200)
+      .json({ success: true, message: "Cloudinary is working", result });
+  } catch (error) {
+    console.error("Cloudinary configuration error:", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Cloudinary configuration error",
+        error: error.message,
+      });
   }
 });
 

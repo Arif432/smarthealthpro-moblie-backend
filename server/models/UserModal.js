@@ -33,7 +33,7 @@ const notesSchema = new mongoose.Schema({
           "Avatar must be either a string or an object with public_id and url",
       },
       default:
-        "https://www.pngitem.com/pimgs/m/146-1468479/my-profile-icon-blank-profile-picture-circle-hd.png",
+        "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
     },
   },
   note: {
@@ -77,7 +77,7 @@ const UserSchema = new mongoose.Schema({
     url: {
       type: String,
       default:
-        "https://www.pngitem.com/pimgs/m/146-1468479/my-profile-icon-blank-profile-picture-circle-hd.png",
+        "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
     },
   },
   devices: [userDeviceSchema],
@@ -201,7 +201,7 @@ const PendingDoctorSchema = new mongoose.Schema({
     url: {
       type: String,
       default:
-        "https://www.pngitem.com/pimgs/m/146-1468479/my-profile-icon-blank-profile-picture-circle-hd.png",
+        "https://www.pngitem.com/pimgs/m/146-1468479_my-profile-icon-blank-profile-picture-circle-hd.png",
     },
   },
 

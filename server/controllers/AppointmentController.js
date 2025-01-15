@@ -533,14 +533,14 @@ const cancelAppointment = async (req, res) => {
     await sendMail(
       patientUser.email,
       "Appointment Cancelled",
-      `Dear ${patientUser.fullName},\n\nYour appointment scheduled with Dr. ${doctorUser.fullName} for ${appointment.date} at ${appointment.time} has been cancelled.\n\nBest regards,\nSmart Health Pro Team`
+      `Dear ${patientUser.fullName},\n\nYour appointment scheduled with Dr. ${doctorUser.fullName} for ${appointment.date} has been cancelled.\n\nBest regards,\nSmart Health Pro Team`
     );
 
     // Send email to doctor
     await sendMail(
       doctorUser.email,
       "Appointment Cancelled",
-      `Dear Dr. ${doctorUser.fullName},\n\nThe appointment scheduled with patient ${patientUser.fullName} for ${appointment.date} at ${appointment.time} has been cancelled.\n\nBest regards,\nSmart Health Pro Team`
+      `Dear Dr. ${doctorUser.fullName},\n\nThe appointment scheduled with patient ${patientUser.fullName} for ${appointment.date} has been cancelled.\n\nBest regards,\nSmart Health Pro Team`
     );
 
     res.status(200).json({
