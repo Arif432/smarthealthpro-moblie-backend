@@ -8,6 +8,7 @@ const admin = require("firebase-admin");
 const userRoutes = require("./server/routes/userRoutes");
 const appointmentRoutes = require("./server/routes/AppointmentRoute");
 const chatRoutes = require("./server/routes/chatRoutes");
+const paymentRoutes = require("./server/routes/paymentRoutes");
 const { ObjectId } = require("mongodb");
 const { Conversation, Message } = require("./server/models/ChatMessageModal");
 const { CLOUDNARY, KEY, SECRET } = require("./cloud");
@@ -74,6 +75,7 @@ mongoose
 app.use("/user", userRoutes);
 app.use("/appointment", appointmentRoutes);
 app.use("/chats", chatRoutes);
+app.use("/payments", paymentRoutes);
 app.use("/", router);
 
 // Create HTTP server for Express and Socket.IO
@@ -934,13 +936,11 @@ app.get("/check-cloudinary", async (req, res) => {
       .json({ success: true, message: "Cloudinary is working", result });
   } catch (error) {
     console.error("Cloudinary configuration error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Cloudinary configuration error",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Cloudinary configuration error",
+      error: error.message,
+    });
   }
 });
 

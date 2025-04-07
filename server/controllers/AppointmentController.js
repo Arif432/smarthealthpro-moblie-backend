@@ -95,8 +95,25 @@ const assignTimeSlots = (time_slots, patients) => {
 // Updated Controller functions
 const createAppointment = async (req, res) => {
   try {
-    const appointment = await Appointment.create(req.body);
-    res.status(201).json({ appointment });
+    const { doctor, patient, bookedOn } = req.body;
+
+    // Check for existing appointment with the same doctor, patient, and date
+    const existingAppointment = await Appointment.findOne({
+      "doctor.id": doctor.id,
+      "patient.id": patient.id,
+      bookedOn: bookedOn,
+    });
+
+    // Delete existing appointment if it exists
+    if (existingAppointment) {
+      await Appointment.deleteOne({ _id: existingAppointment._id });
+    }
+
+    // Create new appointment
+    const newAppointment = new Appointment(req.body);
+    await newAppointment.save();
+
+    res.status(201).json(newAppointment);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
