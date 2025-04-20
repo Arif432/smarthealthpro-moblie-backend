@@ -1,3 +1,6 @@
+require("dotenv").config();
+require("./server/controllers/AppointmentController"); // Ensure this line is present
+
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
@@ -13,6 +16,7 @@ const { ObjectId } = require("mongodb");
 const { Conversation, Message } = require("./server/models/ChatMessageModal");
 const { CLOUDNARY, KEY, SECRET } = require("./cloud");
 const multer = require("multer");
+const https = require("https");
 const path = require("path");
 const fs = require("fs");
 const cloudinary = require("cloudinary").v2;
@@ -20,9 +24,7 @@ const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const crypto = require("crypto");
 const { encrypt, decrypt } = require("./encrypt");
 const onlineStatusHandler = require("./onlineStatusHandler");
-require("./server/controllers/AppointmentController"); // Ensure this line is present
-
-require("dotenv").config();
+const http = require("http");
 
 const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
   "./secrets/serviceAccountKey.json");
@@ -45,6 +47,54 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(cors());
+
+let httpsServer;
+
+// HTTPS redirection middleware (if HTTPS is available)
+if (httpsServer) {
+  app.use((req, res, next) => {
+    // Check if we're already on HTTPS
+    if (req.secure) {
+      return next();
+    }
+
+    // For development environment, check specific headers
+    if (req.headers["x-forwarded-proto"] === "https") {
+      return next();
+    }
+
+    // Redirect to HTTPS
+    const httpsUrl = `https://${req.headers.host.split(":")[0]}:${HTTPS_PORT}${
+      req.url
+    }`;
+    res.redirect(301, httpsUrl);
+  });
+}
+
+const sslKeyPath = process.env.SSL_KEY_PATH;
+const sslCertPath = process.env.SSL_CERT_PATH;
+// Load SSL certificates
+
+try {
+  const sslOptions = {
+    key: fs.readFileSync(sslKeyPath),
+    cert: fs.readFileSync(sslCertPath),
+  };
+
+  // Create HTTPS server
+  httpsServer = https.createServer(sslOptions, app);
+  console.log("SSL certificates loaded successfully");
+} catch (error) {
+  console.error("Error loading SSL certificates:", error.message);
+  console.log("Continuing without HTTPS support");
+}
+
+// Start the servers
+const HTTP_PORT = process.env.PORT || 5000;
+const HTTPS_PORT = process.env.HTTPS_PORT || 8443; // Using 8443 instead of 443
+
+// Create HTTP server for Express and Socket.IO
+const httpServer = http.createServer(app);
 
 // Updated CORS configuration
 const corsOptions = {
@@ -78,11 +128,8 @@ app.use("/chats", chatRoutes);
 app.use("/payments", paymentRoutes);
 app.use("/", router);
 
-// Create HTTP server for Express and Socket.IO
-const http = require("http").createServer(app);
-
 // Updated Socket.IO setup
-const io = require("socket.io")(http, {
+const io = require("socket.io")(httpServer, {
   cors: {
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
     methods: ["GET", "POST"],
@@ -944,9 +991,19 @@ app.get("/check-cloudinary", async (req, res) => {
   }
 });
 
-// Start the server
-http.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server and Socket.IO running on port ${PORT}`);
+// Start HTTP server
+httpServer.listen(HTTP_PORT, "0.0.0.0", () => {
+  console.log(`HTTP Server running on port ${HTTP_PORT}`);
 });
+
+// Start HTTPS server if available
+if (httpsServer) {
+  httpsServer.listen(HTTPS_PORT, "0.0.0.0", () => {
+    console.log(`HTTPS Server running on port ${HTTPS_PORT}`);
+    console.log(
+      `Access your secure server at: https://localhost:${HTTPS_PORT}`
+    );
+  });
+}
 
 module.exports = app;
